@@ -11,7 +11,6 @@ class Move{
 
 public:
 	Move(int startR, int startC, int endR, int endC, std::string cap) : startRow(startR), startCol(startC), endRow(endR), endCol(endC) {
-		capturedType = cap;
 		isCheck = false;;
 	 	isCastle =  false;
 	 	isPromotion = false;
@@ -19,8 +18,7 @@ public:
 		isDoublePawnPush = false;
 		epRow = -1;
 		epCol = -1;
-		if (
-			cap.length()){
+		if (cap.length()){
 			isCapture = true;
 			capturedPieceTimesMoved = 0;
 		}
@@ -127,7 +125,6 @@ public:
 	int epCol;
 
 // Piece Types involved in this move
-	std::string capturedType;
 	PieceType promotionType;
 
 	int capturedPieceTimesMoved;
@@ -150,16 +147,15 @@ public:
 
 
 	Move() 
-    : startRow(0), startCol(0), endRow(0), endCol(0),
+    : moveRep(""), startRow(0), startCol(0), endRow(0), endCol(0), epRow(-1), epCol(-1),
       isCheck(false), isCastle(false),
-      isPromotion(false), isEnPessant(false), moveRep(""), epRow(-1), epCol(-1) {}
+      isPromotion(false), isEnPessant(false) {}
 
-	Move(const Move& other): startRow(other.startRow), startCol(other.startCol), endRow(other.endRow), endCol(other.endCol),
-      isCheck(other.isCheck), isCastle(other.isCastle), isPromotion(other.isPromotion),isEnPessant(other.isEnPessant), 
-      moveRep(other.moveRep), epRow(other.epRow), epCol(other.epCol), isCapture(other.isCapture), promotionType(other.promotionType), capturedType(other.capturedType),
-      moveScore(other.moveScore), capturedPieceTimesMoved(other.capturedPieceTimesMoved), isDoublePawnPush(other.isDoublePawnPush), promotionZobrist(other.promotionZobrist), 
-      previousZobristHash(other.previousZobristHash) {
-      }
+	Move(const Move& other): moveRep(other.moveRep), 
+	  startRow(other.startRow), startCol(other.startCol), endRow(other.endRow), endCol(other.endCol), epRow(other.epRow), epCol(other.epCol),
+      promotionType(other.promotionType), capturedPieceTimesMoved(other.capturedPieceTimesMoved),
+      isCheck(other.isCheck), isCastle(other.isCastle), isPromotion(other.isPromotion),isEnPessant(other.isEnPessant), isCapture(other.isCapture), isDoublePawnPush(other.isDoublePawnPush),
+      moveScore(other.moveScore), previousZobristHash(other.previousZobristHash), promotionZobrist(other.promotionZobrist) {}
 
     Move& operator=(const Move& other) {
 	    if (this != &other) {
@@ -176,7 +172,6 @@ public:
 	        epRow = other.epRow;
 	        epCol = other.epCol;
 	        promotionType = other.promotionType;
-	        capturedType = other.capturedType; 
 	        moveScore = other.moveScore;
 	        capturedPieceTimesMoved = other.capturedPieceTimesMoved;
 	        isDoublePawnPush = other.isDoublePawnPush;

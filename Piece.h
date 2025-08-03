@@ -25,7 +25,7 @@ class Piece {
         PieceType type;
 
     // White will always have color = 1, black will have color = 0    
-        Piece(int c, int startRow, int startCol) : color(c), col(startCol), row(startRow), timesMoved(0) {};           //Constructor for Piece 
+        Piece(int c, int startRow, int startCol) : color(c), row(startRow), col(startCol), timesMoved(0) {};           //Constructor for Piece 
 
         std::string getColor() const{
             if (color){

@@ -199,7 +199,6 @@ public:
 			return;
 		}
 
-		std::unordered_set<Piece*>& currentTeam = (playerTurn == 0) ? blackAlive : whiteAlive;
 		std::unordered_set<Piece*>& otherTeam = (playerTurn == 0) ? whiteAlive : blackAlive;
 
 		int startRow = move.startRow;
@@ -259,7 +258,7 @@ public:
 	    int endCol = move.endCol;
 	    Piece* king = board[startRow][startCol];
 
-	    if(!king || *king != "King"){
+	    if(!king || king->type != PieceType::KING){
 	    	throw std::runtime_error("Move has bad value");
 	    }
 
@@ -435,7 +434,6 @@ public:
 		}
 
 		std::unordered_set<Piece*>& currentTeam = (playerTurn == 0) ? blackAlive : whiteAlive;
-		std::unordered_set<Piece*>& otherTeam = (playerTurn == 0) ? whiteAlive : blackAlive;
 
 		int startRow = move.startRow;
 		int startCol = move.startCol;

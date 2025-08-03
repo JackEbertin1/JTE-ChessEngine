@@ -30,7 +30,7 @@ int main() {
 
     std::string move;
     MoveList moves;
-    int depth = 6;
+    int depth = 4;
 
     while (true){
         int playerTurn = test->getTurn();
