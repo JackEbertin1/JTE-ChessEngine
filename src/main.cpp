@@ -1,4 +1,5 @@
-#include "chessSearch.h"
+
+#include "chess/search/Perft.h"
 
 #include <cstdlib>  // for rand
 #include <ctime>    // for seeding rand
@@ -6,6 +7,7 @@
 using namespace std;
 using namespace chessSearch;
 using namespace Evaluation;
+
 
 /*
 g2g4
@@ -30,14 +32,14 @@ int main() {
 
     std::string move;
     MoveList moves;
-    int depth = 4;
+    int depth = 6;
 
     while (true){
         int playerTurn = test->getTurn();
 
         if(playerTurn == 1){
             pair<string, float> eval = searchBestMoveParallel(test, depth, test->getTurn());
-            cout << "Eval: " << eval.second << endl;
+            cout << "EvaL: " << eval.second << endl;
             cout << "Best move is " << eval.first << endl;
         }
         
@@ -89,12 +91,12 @@ int main() {
                 int dep;
                 cout << "Please enter a depth: " << endl;
                         cin >> dep;
-                cout << "Nodes Found: " << endl << perftParallel(test, dep) << endl;
+                cout << "Nodes Found: " << endl << perft::perftParallel(test, dep) << endl;
                 continue;
             }
 
             if(move == "Quit"){
-                break;
+                return 0;
             }
 
             if(move == "undo"){
@@ -126,12 +128,6 @@ int main() {
             }
         }
     }
-
-    /*cout << "Beginning Perft Search with depth 4 from position : " << endl;
-    test->printBoard();
-
-    cout << "Nodes Found: " << endl << perft(test, 1) << endl;*/
-
 
 
 

@@ -1,14 +1,14 @@
 #ifndef BOARD_H
 #define BOARD_H
 
-#include "Move.h"
-#include "King.h"
-#include "Queen.h"
-#include "Pawn.h"
-#include "Rook.h"
-#include "Bishop.h"
-#include "Knight.h"
-#include "Zobrist.h"
+#include "chess/Move.h"
+#include "chess/pieces/King.h"
+#include "chess/pieces/Queen.h"
+#include "chess/pieces/Pawn.h"
+#include "chess/pieces/Rook.h"
+#include "chess/pieces/Bishop.h"
+#include "chess/pieces/Knight.h"
+#include "chess/Zobrist.h"
 #include <exception>
 #include <iostream>
 #include <sstream>
@@ -35,6 +35,7 @@ public:
 	Piece* board[8][8];
 	std::unordered_set<Piece*> whiteAlive;
 	std::unordered_set<Piece*> blackAlive;
+
 
 // Constructors	
 // Initializes chessboard set up for new game. Black pieces are given color 0, white = 1

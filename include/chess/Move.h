@@ -1,11 +1,11 @@
 #ifndef MOVE_H
 #define MOVE_H
 
-#include "Piece.h"
-#include "Queen.h"
-#include "Rook.h"
-#include "Bishop.h"
-#include "Knight.h"
+#include "chess/pieces/Piece.h"
+#include "chess/pieces/Queen.h"
+#include "chess/pieces/Rook.h"
+#include "chess/pieces/Bishop.h"
+#include "chess/pieces/Knight.h"
 
 class Move{
 
@@ -109,6 +109,10 @@ public:
 	    moveRep = rep;
 
 	    return rep;
+	}
+
+	bool operator==(const Move& other) const {
+	    return startRow == other.startRow && startCol == other.startCol && endRow == other.endRow && endCol == other.endCol && promotionType == other.promotionType;
 	}
 
 

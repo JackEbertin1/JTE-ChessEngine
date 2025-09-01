@@ -1,5 +1,5 @@
-#include "Board.h"
-#include "Evaluation.h"
+#include "chess/Board.h"
+#include "chess/evaluation/Evaluation.h"
 #include <iostream>
 #include <exception>
 #include <utility>
@@ -21,83 +21,12 @@ namespace chessSearch {
 	struct TTEntry {
 		float value;
 		int depth;
-		//Move bestMove;
+		Move bestMove;
 		enum Flag { EXACT, LOWERBOUND, UPPERBOUND } type;
 	};
 
 	std::unordered_map<uint64_t, TTEntry> transpositionTable;
 	std::mutex ttMutex;
-
-	long perft(Board* myBoard, int depth){
-		long nodes = 0;
-
-		if (depth == 0){
-			return 1;
-		}
-
-		MoveList moves;
-		myBoard->generatePseudoLegalMoves(moves);
-		for(int i = 0; i < moves.count; i++){
-
-			myBoard->makeMove(moves[i]);
-
-			if (!myBoard->inCheck(1 - myBoard->getTurn())){
-				nodes += perft(myBoard, depth - 1);
-			}
-
-			myBoard->undoMove();
-		}
-		return nodes;
-}
-
-	int perftCount(Board* myBoard, int depth){
-		long nodes = 0;
-
-		MoveList moves;
-		myBoard->generateLegalMoves(moves);
-		for(int i = 0; i < moves.count; i++){
-			myBoard->makeMove(moves[i]);
-
-			int moveNodes = perft(myBoard, depth - 1);
-			std::cout << "Move: " << moves[i].getMoveRepresentation() << ": " << moveNodes << std::endl;
-			nodes += moveNodes;
-
-			myBoard->undoMove();
-		}
-		return nodes;
-	}
-
-	uint64_t perftParallel(Board* board, int depth) {
-	    if (depth == 0) {return 1;}
-
-	    MoveList moves;
-	    board->generatePseudoLegalMoves(moves);
-	    std::vector<std::future<uint64_t>> futures;
-
-	    for (int i = 0; i < moves.count; i++) {
-	        // Clone the board for each thread
-	        Board* clonedBoard = board->clone();  // Assuming this returns a deep-copied pointer
-	        clonedBoard->makeMove(moves[i]);
-
-	        if (clonedBoard->inCheck(1 - clonedBoard->getTurn())) {
-	            delete clonedBoard;
-	            continue; // Skip illegal move
-	        }
-
-	        // Launch async task
-	        futures.push_back(std::async(std::launch::async, [clonedBoard, depth]() -> uint64_t {
-	            uint64_t result = perft(clonedBoard, depth - 1);
-	            delete clonedBoard;  // Free memory
-	            return result;
-	        }));
-	    }
-
-	    uint64_t total = 0;
-	    for (auto& future : futures) {
-	        total += future.get();
-	    }
-	    return total;
-	}
 
 	void sortMoves(MoveList& moves, Board* board){
 		for(int i = 0; i < moves.count; i++){
@@ -107,20 +36,18 @@ namespace chessSearch {
 		std::sort(moves.moves, moves.moves + moves.count,[](const Move& a, const Move& b) {return a.moveScore > b.moveScore;});
 	}
 
-	void storeTTEntry(uint64_t zobristKey, float value, int depth, float alphaOrig, float beta) {
-	    TTEntry entry;
-	    entry.value = value;
-	    entry.depth = depth;
+	void storeTTEntry(uint64_t zobristKey, float value, int depth, float alphaOrig, float beta,  Move bestMove) {
+		TTEntry::Flag flag;
 
-	    if (value <= alphaOrig) {
-	        entry.type = TTEntry::UPPERBOUND;
+	   if (value <= alphaOrig) {
+	        flag = TTEntry::UPPERBOUND;
 	    } else if (value >= beta) {
-	        entry.type = TTEntry::LOWERBOUND;
+	        flag = TTEntry::LOWERBOUND;
 	    } else {
-	        entry.type = TTEntry::EXACT;
+	        flag = TTEntry::EXACT;
 	    }
 
-	    transpositionTable[zobristKey] = entry;
+	    transpositionTable[zobristKey] = TTEntry{value, depth, bestMove, flag};
 	}
 
 	float minimax(Board* board, int depth, bool maximizingPlayer){
@@ -160,16 +87,26 @@ namespace chessSearch {
 		float alphaOrig = alpha;
 
 		uint64_t zobristKey = board->getHash();
+		Move startMove;
+		bool startMoveTT = false;
 
 		{
 			std::lock_guard<std::mutex> lock(ttMutex);
 			auto it = transpositionTable.find(zobristKey);
-			if (it != transpositionTable.end() && it->second.depth >= depth) {
+			if (it != transpositionTable.end()) {
 			    const TTEntry& entry = it->second;
 
-			    if (entry.type == TTEntry::EXACT) {return entry.value;}
+				// Use bestMove regardless of depth for ordering
+		        if (entry.bestMove.startRow > -1) {
+		            startMove = entry.bestMove;
+		            startMoveTT = true;
+		        }
+
+			    if(it->second.depth >= depth){
+			    	if (entry.type == TTEntry::EXACT) {return entry.value;}
 			    if (entry.type == TTEntry::LOWERBOUND && entry.value >= beta) {return entry.value;}
 			    if (entry.type == TTEntry::UPPERBOUND && entry.value <= alpha) {return entry.value;}
+			    }
 			}
 		}
 
@@ -180,20 +117,38 @@ namespace chessSearch {
 		    float eval = evaluate(board, true);
 		    {
 		    	std::lock_guard<std::mutex> lock(ttMutex);
-		    	transpositionTable[zobristKey] = TTEntry{eval, depth, TTEntry::EXACT};
+		    	transpositionTable[zobristKey] = TTEntry{eval, depth, Move(-1, -1, -1, -1, ""), TTEntry::EXACT};
 		    }
 		    return eval;
 		}
 
 
-		if(depth + 2 >= startingDepth){sortMoves(moves, board);}
+		sortMoves(moves, board);
+		
+		if (startMoveTT) {
+		    for (int i = 0; i < moves.count; ++i) {
+		        if (moves[i] == startMove) {
+		            std::swap(moves[0], moves[i]);  // Try best move first
+		            break;
+		        }
+		    }
+		} 
+
 		float bestScore = maximizingPlayer ? -1000000.0f : 1000000.0f;
+		Move bestMove;
+
+
 		if(maximizingPlayer){
 			for(int i = 0; i < moves.count; i++){
 				board->makeMove(moves[i]);
 				if(!board->inCheck(1 - board->getTurn())){
 					float score = minimaxAB(board, depth - 1, !maximizingPlayer, alpha, beta);
-					if (score > bestScore){bestScore = score;}
+
+					if (score > bestScore){
+						 bestMove = moves[i];
+						bestScore = score;
+					}
+
 					alpha = std::max(alpha, score);
 				}
 				board->undoMove();
@@ -205,11 +160,18 @@ namespace chessSearch {
 		else{
 			for(int i = 0; i < moves.count; i++){
 				board->makeMove(moves[i]);
+
 				if(!board->inCheck(1 - board->getTurn())){
 					float score = minimaxAB(board, depth - 1, !maximizingPlayer, alpha, beta);
-					if (score < bestScore){bestScore = score;}
+
+					if (score < bestScore){
+						bestScore = score;
+						bestMove = moves[i];
+					}
+
 					beta = std::min(beta, score);
 				}
+
 				board->undoMove();
 				if (alpha >= beta){
 					break;
@@ -219,18 +181,34 @@ namespace chessSearch {
 
 		{
 			std::lock_guard<std::mutex> lock(ttMutex);
-			storeTTEntry(zobristKey, bestScore, depth, alphaOrig, beta);
+			storeTTEntry(zobristKey, bestScore, depth, alphaOrig, beta, bestMove);
 		}
 		return bestScore;
 	}
 
 	std::pair<std::string, float> searchBestMoveParallel(Board* board, int depth, bool maximizingPlayer) {
+		std::cout << "Starting SBMP with TT size " << transpositionTable.size() << std::endl;
 	    startingDepth = depth;
 	    nodesVisited = 0;
 	    repeatedPositions = 0;
 	    MoveList moves;
-	    board->generateLegalMoves(moves);
+	    uint64_t zobristKey = board->getHash();
+	    std::cout << "Searching with hash " << zobristKey << std::endl;
 
+	    {
+			std::lock_guard<std::mutex> lock(ttMutex);
+			auto it = transpositionTable.find(zobristKey);
+			if (it != transpositionTable.end()) {
+			    TTEntry& entry = it->second;
+			    if(entry.depth >= depth){
+			    	std::cout << "Found Posiition in TT" << std::endl;
+			    	return std::make_pair(entry.bestMove.getMoveRepresentation(), entry.value);
+			    }
+			}
+		}
+
+
+		board->generatePseudoLegalMoves(moves);
 	    sortMoves(moves, board);
 
 	    std::vector<std::future<std::pair<Move, float>>> futures;
@@ -264,6 +242,11 @@ namespace chessSearch {
 	            bestMove = move;
 	        }
 	    }
+
+	    {
+			std::lock_guard<std::mutex> lock(ttMutex);
+			transpositionTable[zobristKey] = TTEntry{bestScore, depth, bestMove, TTEntry::EXACT};
+		}
 
 	    return std::make_pair(bestMove.getMoveRepresentation(), bestScore);
 	}
