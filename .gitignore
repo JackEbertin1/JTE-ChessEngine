@@ -14,6 +14,7 @@ out/
 *.out
 *.app
 chessEngine
+chessGame
 
 # CMake generated files
 CMakeCache.txt

@@ -1,5 +1,5 @@
 
-#include "chess/search/Perft.h"
+#include "chess/search/chessSearch.h" 
 
 #include <cstdlib>  // for rand
 #include <ctime>    // for seeding rand
@@ -23,12 +23,19 @@ r1bqkbnr/pppp1ppp/2n5/4p3/4P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 0 1
 
 
 int main() {
+    
     std::string fen;
-    cout << "Please enter a FEN: " << endl;
-            std::getline(std::cin, fen);
+    cout << "Please enter a FEN (Enter 0 for new game): " << endl;
+    std::getline(std::cin, fen);
 
-    Board* test = new Board();
-    //cout << test->getHash() << endl;
+    Board* test;
+    if(fen == "0"){
+         test = new Board();
+    }
+    else
+    {
+        test = new Board(fen);
+    }
 
     std::string move;
     MoveList moves;
@@ -77,21 +84,8 @@ int main() {
                 continue;
             }
 
-            if (move == "pieces"){
-                test->printAlivePieces();
-                continue;
-            }
-
             if(move == "print"){
                 test->printBoard();
-                continue;
-            }
-
-            if (move == "perft"){
-                int dep;
-                cout << "Please enter a depth: " << endl;
-                        cin >> dep;
-                cout << "Nodes Found: " << endl << perft::perftParallel(test, dep) << endl;
                 continue;
             }
 

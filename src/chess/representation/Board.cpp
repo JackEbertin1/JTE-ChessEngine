@@ -1,46 +1,7 @@
-#ifndef BOARD_H
-#define BOARD_H
+#include "chess/rep/Board.h"
 
-#include "chess/Move.h"
-#include "chess/pieces/King.h"
-#include "chess/pieces/Queen.h"
-#include "chess/pieces/Pawn.h"
-#include "chess/pieces/Rook.h"
-#include "chess/pieces/Bishop.h"
-#include "chess/pieces/Knight.h"
-#include "chess/Zobrist.h"
-#include <exception>
-#include <iostream>
-#include <sstream>
+Board::Board(){
 
-#include <utility>
-#include <unordered_set>
-#include <vector>
-#include <unordered_map>
-#include <stack>
-#include <optional>
-#include <cstdlib>
-#include <random>
-#include <cstdint>
-
-
-using namespace Zobrist;
-
-class Board {
-
-public:
-
-// Representation of both the board and each team.
-//
-	Piece* board[8][8];
-	std::unordered_set<Piece*> whiteAlive;
-	std::unordered_set<Piece*> blackAlive;
-
-
-// Constructors	
-// Initializes chessboard set up for new game. Black pieces are given color 0, white = 1
-//	Runs in O(1)
-	Board(){
 		initializeZobrist();
 		for(int i = 0; i < 8; i++){
 			for(int j = 0; j < 8; j++){
@@ -102,7 +63,47 @@ public:
 		this->printBoard();
 	}
 
-	Board(int dummy){
+Board::Board(std::string fen){
+		initializeZobrist();
+		std::istringstream iss(fen);
+	    std::string piecePlacement, activeColor, castling, enPassant;
+	    int halfmove, fullmove;
+
+	    iss >> piecePlacement >> activeColor >> castling >> enPassant >> halfmove >> fullmove;
+
+	    int fenRow = 7;  // Start from rank 8
+		int col = 0;
+
+		for (char c : piecePlacement) {
+		    if (c == '/') {
+		        fenRow--;
+		        col = 0;
+		    } else if (isdigit(c)) {
+		        col += c - '0';
+		    } else {
+		        Piece* piece = makePiece(c, fenRow, col);
+		        if (piece->type == PieceType::KING) {
+				    if (piece->color == 1) {whiteKing = piece;}
+				    else {blackKing = piece;}
+				}
+		        board[fenRow][col] = piece;
+		        if (piece->color == 1) whiteAlive.insert(piece);
+		        else blackAlive.insert(piece);
+		        col++;
+		    }
+		}
+        // Set turn
+    	playerTurn = (activeColor == "w") ? 1 : 0;
+
+    	// 3. Castling rights
+	    whiteKingSideCastle = castling.find('K') != std::string::npos;
+	    whiteQueenSideCastle = castling.find('Q') != std::string::npos;
+	    blackKingSideCastle = castling.find('k') != std::string::npos;
+	    blackQueenSideCastle = castling.find('q') != std::string::npos;
+	    computeZobristHash();
+    }
+
+Board::Board(int dummy){
 		// Initialize the 8x8 board to nullptr
 	    for (int i = 0; i < 8; ++i) {
 	        for (int j = 0; j < 8; ++j) {
@@ -134,55 +135,113 @@ public:
 	    blackQueenSideCastle = true;
 	}
 
-	Board(std::string fen){
-		initializeZobrist();
-		std::istringstream iss(fen);
-	    std::string piecePlacement, activeColor, castling, enPassant;
-	    int halfmove, fullmove;
+Board::Board(const Board& other) {
+        for (int i = 0; i < 8; i++){
+            for (int j = 0; j < 8; j++){
+            	if(other.board[i][j]){
+            		board[i][j] = other.board[i][j]->clone();
+            	}
+            	else{
+            		board[i][j] = nullptr;
+            	}
+            }
+        }
+    }
 
-	    iss >> piecePlacement >> activeColor >> castling >> enPassant >> halfmove >> fullmove;
+Board& Board::operator=(const Board& other) {
+    if (this == &other)
+        return *this;
 
-	    int fenRow = 7;  // Start from rank 8
-		int col = 0;
+    for (int i = 0; i < 8; i++){
+        for (int j = 0; j < 8; j++){
+        	if (other.board[i][j]){
+        		board[i][j] = other.board[i][j]->clone();
+        	}
+        	else{
+        		board[i][j] = nullptr;
+        	}
+        } 	
+    }
+    return *this;
+}
 
-		for (char c : piecePlacement) {
-		    if (c == '/') {
-		        fenRow--;
-		        col = 0;
-		    } else if (isdigit(c)) {
-		        col += c - '0';
-		    } else {
-		        Piece* piece = makePiece(c, fenRow, col);
-		        if (piece->type == PieceType::KING) {
-				    if (piece->color == 1) {whiteKing = piece;}
-				    else {blackKing = piece;}
-				}
-		        board[fenRow][col] = piece;
-		        if (piece->color == 1) whiteAlive.insert(piece);
-		        else blackAlive.insert(piece);
-		        col++;
-		    }
-		}
+Board* Board::clone(){
+		Board* other = new Board(1);
 
+		for (int i = 0; i < 8; i++){
+            for (int j = 0; j < 8; j++){
+            	if(this->board[i][j]){
+            		other->board[i][j] = this->board[i][j]->clone();
+            		if (other->board[i][j]->color == 1){
+            			other->whiteAlive.insert(other->board[i][j]);
+            		}
+            		else{
+            			other->blackAlive.insert(other->board[i][j]);
+            		}
+            		if (other->board[i][j]->type == PieceType::KING) {
+					    if (other->board[i][j]->color == 1)
+					        other->whiteKing = other->board[i][j];
+					    else
+					        other->blackKing = other->board[i][j];
+					}
+            	}
+            	else{
+            		other->board[i][j] = nullptr;
+            	}
+            }
+        }
 
+        // Copy the move stack
+	    std::stack<Move> tempStack = this->playedMoves;
+	    std::stack<Move> reverseStack;
 
-	    // Set turn
-    	playerTurn = (activeColor == "w") ? 1 : 0;
+	    while (!tempStack.empty()) {
+	        reverseStack.push(tempStack.top());
+	        tempStack.pop();
+	    }
+	    while (!reverseStack.empty()) {
+	        other->playedMoves.push(reverseStack.top());
+	        reverseStack.pop();
+	    }
 
-    	// 3. Castling rights
-	    whiteKingSideCastle = castling.find('K') != std::string::npos;
-	    whiteQueenSideCastle = castling.find('Q') != std::string::npos;
-	    blackKingSideCastle = castling.find('k') != std::string::npos;
-	    blackQueenSideCastle = castling.find('q') != std::string::npos;
-	    computeZobristHash();
+	    other->enPassantSquare = this->enPassantSquare;
+		other->playerTurn = this->playerTurn;
+		other->fiftyMoveCounter = this->fiftyMoveCounter;
+		other->whiteKingSideCastle = this->whiteKingSideCastle;
+		other->whiteQueenSideCastle = this->whiteQueenSideCastle;
+		other->blackKingSideCastle = this->blackKingSideCastle;
+		other->blackQueenSideCastle = this->blackQueenSideCastle;
+		other->currentHash = this->currentHash;
+
+		return other;
 	}
 
+Board::~Board() {
+    	for (int i = 0; i < 8; i++) {
+       		for (int j = 0; j < 8; j++) {
+            	if (board[i][j] != nullptr) {
+                	delete board[i][j];  // Free the memory for the piece
+            	}
+        	}
+    	}
+	}
 
+// Board Representation and Move Making functions
 
-// Applies a move to the board and adds move made to history of moves 
-// Moves will be made from console by typing in string representation of move. Automatic check will be performed to ensure submitted string corresponds to a legal move in the given position
-//	
-	void makeMove(Move& move){	
+void Board::printBoard(){	
+    for (int i = 7; i > -1; i--) {
+        	for (int j = 0; j < 8; j++) {
+            	if (board[i][j] == nullptr) {
+                	std::cout << "* ";  // Empty square is represented by "*"
+            	} else {
+                	std::cout << board[i][j]->getRepresentation() << " ";  // Print the value of the piece
+            	}
+        	}
+        	std::cout << std::endl;  // Move to the next line after printing a row
+    	}
+	}
+
+void Board::makeMove(Move& move){	
 		move.previousZobristHash = currentHash;  // Cache current hash
 		updateZobristHash(move);
 
@@ -226,7 +285,7 @@ public:
 		piece->updateLocation(endRow, endCol);
 		piece->timesMoved++;
 
-		if (*piece == "Pawn" && std::abs(startRow - endRow) == 2){
+		if (piece->getType() == PieceType::PAWN && std::abs(startRow - endRow) == 2){
 			int epRow = (move.startRow + move.endRow) / 2;
     		enPassantSquare = std::make_pair(epRow, move.startCol);
     		move.setEnPessantSquare(enPassantSquare->first, enPassantSquare->second);
@@ -239,20 +298,20 @@ public:
 		playerTurn = 1 - playerTurn;
 
 		// Update 50 move rule counter, resets if move was a pawn move or capture, increments otherwise
-		if(*piece == "Pawn" || move.isCapture){fiftyMoveCounter = 0;}
+		if(piece->getType() == PieceType::PAWN || move.isCapture){fiftyMoveCounter = 0;}
 		else{fiftyMoveCounter++;}
 
 		playedMoves.push(move);
 	}
 
-	void makeMove(std::string move){
+void Board::makeMove(std::string move){
 		if (!moveMap.contains(move)) {
         	throw std::invalid_argument("Invalid or illegal move: " + move);
     	}
     	makeMove(moveMap[move]);
 	}
 
-	void castle(Move& move){
+void Board::castle(Move& move){
 		int startRow = move.startRow;
 	    int startCol = move.startCol;
 	    int endRow = move.endRow;
@@ -303,7 +362,7 @@ public:
 		playedMoves.push(move);
 	}
 
-	void captureEnPessant(Move& move){
+void Board::captureEnPessant(Move& move){
 		int startRow = move.startRow;
 	    int startCol = move.startCol;
 	    int endRow = move.endRow;
@@ -332,7 +391,7 @@ public:
 		playedMoves.push(move);
 	}
 
-	void promote(Move& move){
+void Board::promote(Move& move){
 		if (move.endRow == 7){promoteWhite(move);}
 		else {promoteBlack(move);}
 
@@ -343,7 +402,7 @@ public:
 		playedMoves.push(move);
 	}
 
-	void promoteWhite(Move& move){
+void Board::promoteWhite(Move& move){
 		int startRow = move.startRow;
 		int startCol = move.startCol;
 		int endRow = move.endRow;
@@ -379,7 +438,7 @@ public:
 		whiteAlive.insert(promotePiece);
 	}
 
-	void promoteBlack(Move& move){
+void Board::promoteBlack(Move& move){
 		int startRow = move.startRow;
 		int startCol = move.startCol;
 		int endRow = move.endRow;
@@ -415,9 +474,7 @@ public:
 		blackAlive.insert(promotePiece);
 	}
 
-// Undoes a move and returns the board to the state of the previous turn
-// 	
-	void undoMove(){
+void Board::undoMove(){
 		Move move = playedMoves.top();
 		currentHash = move.previousZobristHash; // Restore Zobrist hash from last position
 
@@ -467,7 +524,7 @@ public:
 		resetEnPessant();
 	}
 
-	void undoCastle(Move& move){
+void Board::undoCastle(Move& move){
 		int startRow = move.startRow;
 		int startCol = move.startCol;
 		int endRow = move.endRow;
@@ -501,7 +558,7 @@ public:
 		resetEnPessant();
 	}
 
-	void undoEnPessant(Move& move){
+void Board::undoEnPessant(Move& move){
 		int startRow = move.startRow;
 		int startCol = move.startCol;
 		int endRow = move.endRow;
@@ -528,7 +585,7 @@ public:
 		resetEnPessant();
 	}
 
-	void undoPromotion(Move& move){
+void Board::undoPromotion(Move& move){
 		if (move.endRow == 7){undoPromotionWhite(move);}
 		else{undoPromotionBlack(move);}
 
@@ -536,7 +593,7 @@ public:
 		resetEnPessant();
 	}
 
-	void undoPromotionWhite(Move& move){
+void Board::undoPromotionWhite(Move& move){
 		int startRow = move.startRow;
 		int startCol = move.startCol;
 		int endRow = move.endRow;
@@ -569,7 +626,7 @@ public:
 		playedMoves.pop();  
 	}
 
-	void undoPromotionBlack(Move& move){
+void Board::undoPromotionBlack(Move& move){
 		int startRow = move.startRow;
 		int startCol = move.startCol;
 		int endRow = move.endRow;
@@ -603,10 +660,17 @@ public:
 		playedMoves.pop();
 	}
 
+void Board::updateMoveScore(Move& move) {
+	    if (move.isCapture && !move.isEnPessant) {
+	        int attacker = board[move.startRow][move.startCol]->getValue();
+			int victim   = board[move.endRow][move.endCol]->getValue();
+			move.moveScore += 100 * victim - attacker;
+	    }
+	}
 
-// Generates all moves for the given player and enters them into move lists for each player.
-//	
-	int generateLegalMoves(MoveList& legalMoves){
+// Move generation functions
+
+int Board::generateLegalMoves(MoveList& legalMoves){
 		MoveList pseudoMoves;
     	generatePseudoLegalMoves(pseudoMoves);
 
@@ -624,57 +688,7 @@ public:
 		return legalMoves.count;
 	}
 
-// Checks whether a move is legal by determining if playing the move will leave the player in check
-//	
-	bool isMoveLegal(Move& move){
-	    makeMove(move);
-	    bool inCheckAfterMove = inCheck(1 - playerTurn);
-	    undoMove();
-	    return !inCheckAfterMove;
-	}
-
-// Returns true if player is currently in named condition (Check, Checkmate, Stalemate)
-	bool inCheck(int player){
-		std::unordered_set<Piece*>& otherTeam = (player == 0) ? whiteAlive : blackAlive;
-
-		Piece* king = (player == 0) ? blackKing : whiteKing;
-		int kingRow = king->row;
-		int kingCol = king->col;
-			
-		
-		for(Piece* piece : otherTeam){
-			if (pieceAttacksSquare(piece, kingRow, kingCol)){
-				return true;
-			}
-		}
-		return false;
-	}
-
-	bool inCheckMate(int player){
-		if (inCheck(player)){
-			MoveList moves;
-			generateLegalMoves(moves);
-			return moves.count == 0;
-		}
-		return false;
-	}
-
-	bool inStaleMate(int player){
-		MoveList moves;
-		generateLegalMoves(moves);
-		return (!inCheck(player) && moves.count == 0);
-	}
-
-	bool gameIsOver(){
-		return inCheckMate(getTurn()) || inStaleMate(getTurn()) || fiftyMoveCounter >= 50;
-	}
-
-
-// Generates the locational moves that a piece can make in a given position. Does not account for check as this is done later. Returns a vector of Moves. All of these in theory run in O(1) because while there 
-// is looping, the loops are of fixed size with max loop guaranteed to be under 56 iterations because a piece can only move at most 7 squares and can move in at most 8 directions
-//	
-
-	int generatePseudoLegalMoves(MoveList& PLmoves){
+int Board::generatePseudoLegalMoves(MoveList& PLmoves){
 		std::unordered_set<Piece*>& currentTeam = (playerTurn == 0) ? blackAlive : whiteAlive;
 		std::unordered_set<Piece*> teamSnapshot = currentTeam;
 		PLmoves.count = 0;
@@ -685,7 +699,7 @@ public:
 		return PLmoves.count;
 	}
 
-	void generateMovesForPiece(Piece* piece, MoveList& Pmoves){
+void Board::generateMovesForPiece(Piece* piece, MoveList& Pmoves){
 		if(piece->type == PieceType::PAWN){pawnMoves(piece, Pmoves);}
 		else if(piece->type == PieceType::KNIGHT){knightMoves(piece, Pmoves);}
 		else if(piece->type == PieceType::BISHOP){bishopMoves(piece, Pmoves);}
@@ -694,20 +708,21 @@ public:
 		else if(piece->type == PieceType::KING){kingMoves(piece, Pmoves);}
 		else {throw std::runtime_error("Unknown piece type in generateMovesForPiece");}
 	}
+ 
 
-	// Pawn Algortihms
-	void pawnMoves(Piece* piece, MoveList& Pmoves){
+// Pawn Algortihms
+void Board::pawnMoves(Piece* piece, MoveList& Pmoves){
 		if (piece->color == 0){blackPawn(piece, Pmoves);}
 		else{ whitePawn(piece, Pmoves);}
 	}
 
-	void whitePawn(Piece* piece, MoveList& Pmoves){
+void Board::whitePawn(Piece* piece, MoveList& Pmoves){
 	// Determine if pawn can make normal advancing move
 		if(piece->row + 1 <= 6 && board[piece->row + 1][piece->col] == nullptr){
-			Pmoves.add(Move(piece->row, piece->col, piece->row + 1, piece->col, ""));
+			Pmoves.add(Move(piece->row, piece->col, piece->row + 1, piece->col, PieceType::NONE));
 			if (piece->row == 1){
 				if (board[piece->row + 2][piece->col] == nullptr){
-					Move doubleP(piece->row, piece->col, piece->row + 2, piece->col, "");
+					Move doubleP(piece->row, piece->col, piece->row + 2, piece->col, PieceType::NONE);
 					doubleP.setDoublePawnPush();
 					Pmoves.add(doubleP);
 				}
@@ -720,7 +735,7 @@ public:
 			Piece* landingSquare = board[piece->row + 1][newCol];
 			if(landingSquare){
 				if (landingSquare->color != piece->color){
-					Pmoves.add(Move(piece->row, piece->col, landingSquare->row, landingSquare->col, landingSquare->getRepresentation()));
+					Pmoves.add(Move(piece->row, piece->col, landingSquare->row, landingSquare->col, landingSquare->getType()));
 				}
 			}
 		}
@@ -729,7 +744,7 @@ public:
 			Piece* landingSquare = board[piece->row + 1][newCol];
 			if(landingSquare){
 				if (landingSquare->color != piece->color){
-					Pmoves.add(Move(piece->row, piece->col, landingSquare->row, landingSquare->col, landingSquare->getRepresentation()));
+					Pmoves.add(Move(piece->row, piece->col, landingSquare->row, landingSquare->col, landingSquare->getType()));
 				}
 			}
 		}
@@ -737,13 +752,13 @@ public:
 		checkForEnPessant(piece, Pmoves);
 	}
 
-	void blackPawn(Piece* piece, MoveList& Pmoves){
+void Board::blackPawn(Piece* piece, MoveList& Pmoves){
 	// Determine if pawn can make normal advancing move
 		if(piece->row - 1 >= 1 && board[piece->row - 1][piece->col] == nullptr){
-			Pmoves.add(Move(piece->row, piece->col, piece->row - 1, piece->col, ""));
+			Pmoves.add(Move(piece->row, piece->col, piece->row - 1, piece->col, PieceType::NONE));
 			if (piece->row == 6){
 				if (board[piece->row - 2][piece->col] == nullptr){
-					Move doubleP(piece->row, piece->col, piece->row - 2, piece->col, "");
+					Move doubleP(piece->row, piece->col, piece->row - 2, piece->col, PieceType::NONE);
 					doubleP.setDoublePawnPush();
 					Pmoves.add(doubleP);
 				}
@@ -756,7 +771,7 @@ public:
 			Piece* landingSquare = board[piece->row - 1][newCol];
 			if(landingSquare){
 				if (landingSquare->color != piece->color){
-					Pmoves.add(Move(piece->row, piece->col, landingSquare->row, landingSquare->col, landingSquare->getRepresentation()));
+					Pmoves.add(Move(piece->row, piece->col, landingSquare->row, landingSquare->col, landingSquare->getType()));
 				}
 			}
 		}
@@ -765,7 +780,7 @@ public:
 			Piece* landingSquare = board[piece->row - 1][newCol];
 			if(landingSquare){
 				if (landingSquare->color != piece->color){
-					Pmoves.add(Move(piece->row, piece->col, landingSquare->row, landingSquare->col, landingSquare->getRepresentation()));
+					Pmoves.add(Move(piece->row, piece->col, landingSquare->row, landingSquare->col, landingSquare->getType()));
 				}
 			}
 		}
@@ -773,7 +788,7 @@ public:
 		checkForEnPessant(piece, Pmoves);
 	}
 
-	void checkForPromotion(Piece* pawn, MoveList& Pmoves){
+void Board::checkForPromotion(Piece* pawn, MoveList& Pmoves){
 		if (pawn->color == 1 && pawn->row != 6){return;}
 		if (pawn->color == 0 && pawn->row != 1){return;}
 
@@ -827,12 +842,12 @@ public:
 		}	
 	}
 
-	void generatePromotions(Piece* pawn, MoveList& Pmoves, int endRow, int endCol){
+void Board::generatePromotions(Piece* pawn, MoveList& Pmoves, int endRow, int endCol){
 		Piece* landingSquare = board[endRow][endCol];
-		std::string newLocation = "";
+		PieceType newLocation = PieceType::NONE;
 
 		if (landingSquare){
-			newLocation = landingSquare->getRepresentation();
+			newLocation = landingSquare->getType();
 		}
 
 		Move promoteQueen(pawn->row, pawn->col, endRow, endCol, newLocation);
@@ -856,7 +871,7 @@ public:
 		Pmoves.add(promoteBishop);
 	}
 
-	void checkForEnPessant(Piece* pawn, MoveList& Pmoves){
+void Board::checkForEnPessant(Piece* pawn, MoveList& Pmoves){
 		if (!enPassantSquare) return;
 	    int epRow = enPassantSquare->first;
 	    int epCol = enPassantSquare->second;
@@ -866,7 +881,7 @@ public:
 	    if (pawn->color == 1) {
 	        if (epRow == pawn->row + 1) {
 	            if (epCol == pawn->col + 1 || epCol == pawn->col - 1) {
-	                Move captureEP(pawn->row, pawn->col, epRow, epCol, "p");
+	                Move captureEP(pawn->row, pawn->col, epRow, epCol, PieceType::PAWN);
 	                captureEP.setEnPessant();
 	                Pmoves.add(captureEP);
 	            }
@@ -874,16 +889,29 @@ public:
 	    } else { // Black
 	        if (epRow == pawn->row - 1) {
 	            if (epCol == pawn->col + 1 || epCol == pawn->col - 1) {
-	                Move captureEP(pawn->row, pawn->col, epRow, epCol, "P");
+	                Move captureEP(pawn->row, pawn->col, epRow, epCol, PieceType::PAWN);
 	                captureEP.setEnPessant();
 	                Pmoves.add(captureEP);
 	            }
 	        }
-	    }}
+	    }}    
 
+void Board::resetEnPessant(){
+		if (!playedMoves.empty()) {
+		    Move lastMove = playedMoves.top();
 
-	// Knight Algorithm
-	void knightMoves(Piece* piece,  MoveList& Pmoves){
+		    if (lastMove.epRow == -1 || lastMove.epCol == -1) {
+		        enPassantSquare = std::nullopt;
+		    } else {
+		        enPassantSquare = std::make_pair(lastMove.epRow, lastMove.epCol);
+		    }
+		} else {
+		    enPassantSquare = std::nullopt;
+		}
+	}        
+
+// Knight Algorithm
+void Board::knightMoves(Piece* piece,  MoveList& Pmoves){
 		for(const auto& [r, c] : piece->getDirections()){
 			int newRow = piece->row + r;
 			int newCol = piece->col + c;
@@ -895,32 +923,51 @@ public:
 			// View what is on landing Square and add move if possible
 			Piece* landingSquare = board[newRow][newCol];
 			if(landingSquare == nullptr){
-				Pmoves.add(Move(piece->row, piece->col, newRow, newCol, ""));
+				Pmoves.add(Move(piece->row, piece->col, newRow, newCol, PieceType::NONE));
 			} 
 			else if(landingSquare->color != piece->color){
-				Pmoves.add(Move(piece->row, piece->col, newRow, newCol, landingSquare->getRepresentation()));
+				Pmoves.add(Move(piece->row, piece->col, newRow, newCol, landingSquare->getType()));
 			}
 		}	
 	}
 
 
-	// Bishop Algorithm
-	void bishopMoves(Piece* piece,  MoveList& Pmoves){
+//Sliding Piece Algorithms    
+void Board::directionalMoves(Piece* piece, const std::vector<std::pair<int, int>>& directions, MoveList& Pmoves) {  
+	    for (const auto& [r, c] : directions) {
+	        int multiplier = 1;
+	        while (true) {
+	            int newRow = piece->row + (r * multiplier);
+	            int newCol = piece->col + (c * multiplier);
+
+	            if (newRow < 0 || newRow > 7 || newCol < 0 || newCol > 7)
+	                break;
+
+	            Piece* target = board[newRow][newCol];
+	            if (!target) {
+	                Pmoves.add(Move(piece->row, piece->col, newRow, newCol, PieceType::NONE));
+	            } else {
+	                if (target->color != piece->color)
+	                    Pmoves.add(Move(piece->row, piece->col, newRow, newCol, target->getType()));
+	                break;
+	            }
+	            multiplier++;
+	        }
+	    }
+	}
+
+void Board::bishopMoves(Piece* piece,  MoveList& Pmoves){
+		directionalMoves(piece, piece->getDirections(), Pmoves);}
+
+void Board::rookMoves(Piece* piece,  MoveList& Pmoves){
+		directionalMoves(piece, piece->getDirections(), Pmoves);}
+
+void Board::queenMoves(Piece* piece,  MoveList& Pmoves){
 		directionalMoves(piece, piece->getDirections(), Pmoves);}
 
 
-	// Rook Algorithm
-	void rookMoves(Piece* piece,  MoveList& Pmoves){
-		directionalMoves(piece, piece->getDirections(), Pmoves);}
-
-
-	// Queen Algorithm
-	void queenMoves(Piece* piece,  MoveList& Pmoves){
-		directionalMoves(piece, piece->getDirections(), Pmoves);}
-
-
-	// King Algorithms
-	void kingMoves(Piece* piece, MoveList& Pmoves){
+// King Algorithms
+void Board::kingMoves(Piece* piece, MoveList& Pmoves){
 
 			for(const auto& [r, c] : piece->getDirections()){
 				int newRow = piece->row + r;
@@ -933,10 +980,10 @@ public:
 			// View what is on landing Square and add move if possible
 				Piece* landingSquare = board[newRow][newCol];
 				if(landingSquare == nullptr){
-					Pmoves.add(Move(piece->row, piece->col, newRow, newCol, ""));
+					Pmoves.add(Move(piece->row, piece->col, newRow, newCol, PieceType::NONE));
 				} 
 				else if(landingSquare->color != piece->color){
-					Pmoves.add(Move(piece->row, piece->col, newRow, newCol, landingSquare->getRepresentation()));
+					Pmoves.add(Move(piece->row, piece->col, newRow, newCol, landingSquare->getType()));
 				}
 
 			}
@@ -944,7 +991,7 @@ public:
 		else{checkForCastleBlack(piece, Pmoves);}	
 	}
 
-	void checkForCastleWhite(Piece* king, MoveList& Pmoves){
+void Board::checkForCastleWhite(Piece* king, MoveList& Pmoves){
 	    if (king->timesMoved != 0) {return;}
 
 	    // Kingside rook at h1
@@ -959,7 +1006,7 @@ public:
 	                }
 	            }
 	            if (safe) {
-	                Move kingsideCastle(0, 4, 0, 6, "");
+	                Move kingsideCastle(0, 4, 0, 6, PieceType::NONE);
 	                kingsideCastle.setCastle();
 	                Pmoves.add(kingsideCastle);
 	            }
@@ -978,7 +1025,7 @@ public:
 	                }
 	            }
 	            if (safe) {
-	                Move queensideCastle(0, 4, 0, 2, "");
+	                Move queensideCastle(0, 4, 0, 2, PieceType::NONE);
 	                queensideCastle.setCastle();
 	                Pmoves.add(queensideCastle);
 	            }
@@ -986,7 +1033,7 @@ public:
 	    }
 	}
 
-	void checkForCastleBlack(Piece* king, MoveList& Pmoves){
+void Board::checkForCastleBlack(Piece* king, MoveList& Pmoves){
 	    if (king->timesMoved != 0) {return;}
 
 	    // Kingside rook at h1
@@ -1001,7 +1048,7 @@ public:
 	                }
 	            }
 	            if (safe) {
-	                Move kingsideCastle(7, 4, 7, 6, "");
+	                Move kingsideCastle(7, 4, 7, 6, PieceType::NONE);
 	                kingsideCastle.setCastle();
 	                Pmoves.add(kingsideCastle);
 	            }
@@ -1020,7 +1067,7 @@ public:
 	                }
 	            }
 	            if (safe) {
-	                Move queensideCastle(7, 4, 7, 2, "");
+	                Move queensideCastle(7, 4, 7, 2, PieceType::NONE);
 	                queensideCastle.setCastle();
 	                Pmoves.add(queensideCastle);
 	            }
@@ -1028,35 +1075,15 @@ public:
 	    }
 	}
 
-
-	// Returns the possible moves for a sliding piece. Input is the directions that a piece can slide in
-	void directionalMoves(Piece* piece, const std::vector<std::pair<int, int>>& directions, MoveList& Pmoves) {  
-	    for (const auto& [r, c] : directions) {
-	        int multiplier = 1;
-	        while (true) {
-	            int newRow = piece->row + (r * multiplier);
-	            int newCol = piece->col + (c * multiplier);
-
-	            if (newRow < 0 || newRow > 7 || newCol < 0 || newCol > 7)
-	                break;
-
-	            Piece* target = board[newRow][newCol];
-	            if (!target) {
-	                Pmoves.add(Move(piece->row, piece->col, newRow, newCol, ""));
-	            } else {
-	                if (target->color != piece->color)
-	                    Pmoves.add(Move(piece->row, piece->col, newRow, newCol, target->getRepresentation()));
-	                break;
-	            }
-	            multiplier++;
-	        }
-	    }
+// Move Legality Functions
+bool Board::isMoveLegal(Move& move){
+	    makeMove(move);
+	    bool inCheckAfterMove = inCheck(1 - playerTurn);
+	    undoMove();
+	    return !inCheckAfterMove;
 	}
 
-
-// Used to help determine if a team is in check by finding all of the squares that a piece can attack. Does not regard check or special moves as these are not necessary for the use case of this function
-// 	
-	bool pieceAttacksSquare(Piece* piece, int kingRow, int kingCol){
+bool Board::pieceAttacksSquare(Piece* piece, int kingRow, int kingCol){
 		if (piece->type == PieceType::PAWN){       return pawnAttacksKing(piece, kingRow, kingCol);}
 	    if (piece->type == PieceType::KNIGHT){     return knightAttacksKing(piece, kingRow, kingCol);}
 	    if (piece->type == PieceType::BISHOP){ return bishopAttacksKing(piece, kingRow, kingCol);}
@@ -1065,8 +1092,8 @@ public:
 	    if (piece->type == PieceType::KING){       return kingAttacksKing(piece, kingRow, kingCol);}
 	    return false;
 	}
-//
-	bool pawnAttacksKing(Piece* piece, int kingRow, int kingCol){
+
+bool Board::pawnAttacksKing(Piece* piece, int kingRow, int kingCol){
 		if (piece->color == 1){
 			return (piece->row + 1 == kingRow && (piece->col + 1 == kingCol || piece->col - 1 == kingCol));
 		} 
@@ -1075,7 +1102,7 @@ public:
 		}
 	}
 
-	bool knightAttacksKing(Piece* piece, int kingRow, int kingCol){
+bool Board::knightAttacksKing(Piece* piece, int kingRow, int kingCol){
 		std::vector<std::pair<int, int>> directions = {{1, -2}, {2, -1}, {2, 1}, {1, 2}, {-1, 2}, {-2, 1}, {-2, -1}, {-1, -2}};
 		for(const auto& [r, c] : directions){
 			if (piece->row + r == kingRow && piece->col + c == kingCol){return true;}
@@ -1083,7 +1110,7 @@ public:
 		return false;
 	}
 
-	bool kingAttacksKing(Piece* piece, int kingRow, int kingCol){
+bool Board::kingAttacksKing(Piece* piece, int kingRow, int kingCol){
 		std::vector<std::pair<int, int>> directions = {{1, 1}, {1, 0}, {1, -1}, {0, 1}, {0, -1}, {-1, 1}, {-1, 0}, {-1, -1}};
 		for(const auto& [r, c] : directions){
 			if (piece->row + r == kingRow && piece->col + c == kingCol){
@@ -1093,21 +1120,21 @@ public:
 		return false;
 	}
 
-	bool queenAttacksKing(Piece* piece, int kingRow, int kingCol){
+bool Board::queenAttacksKing(Piece* piece, int kingRow, int kingCol){
 		std::vector<std::pair<int, int>> directions = {{1, 1}, {1, 0}, {1, -1}, {0, 1}, {0, -1}, {-1, 1}, {-1, 0}, {-1, -1}};
 		return slideAttacksKing(piece, directions, kingRow, kingCol);
 	}
 
-	bool rookAttacksKing(Piece* piece, int kingRow, int kingCol){
+bool Board::rookAttacksKing(Piece* piece, int kingRow, int kingCol){
 		std::vector<std::pair<int, int>> directions = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
 		return slideAttacksKing(piece, directions, kingRow, kingCol);
 	}
 
-	bool bishopAttacksKing(Piece* piece, int kingRow, int kingCol){
+bool Board::bishopAttacksKing(Piece* piece, int kingRow, int kingCol){
 		return slideAttacksKing(piece, piece->getDirections(), kingRow, kingCol);
 	}
 
-	bool slideAttacksKing(Piece* piece, const std::vector<std::pair<int, int>>& directions, int kingRow, int kingCol){
+bool Board::slideAttacksKing(Piece* piece, const std::vector<std::pair<int, int>>& directions, int kingRow, int kingCol){
 		for (const auto& [r, c] : directions) {
 	        int multiplier = 1;
 	        while (true) {
@@ -1130,15 +1157,73 @@ public:
 	    return false;
 	}
 
-	int getTurn(){
+
+// Board State Evaluation Functions    
+bool Board::inCheck(int player){
+		std::unordered_set<Piece*>& otherTeam = (player == 0) ? whiteAlive : blackAlive;
+
+		Piece* king = (player == 0) ? blackKing : whiteKing;
+		int kingRow = king->row;
+		int kingCol = king->col;
+			
+		
+		for(Piece* piece : otherTeam){
+			if (pieceAttacksSquare(piece, kingRow, kingCol)){
+				return true;
+			}
+		}
+		return false;
+	}
+
+bool Board::inCheckMate(int player){
+		if (inCheck(player)){
+			MoveList moves;
+			generateLegalMoves(moves);
+			return moves.count == 0;
+		}
+		return false;
+	}
+
+bool Board::inStaleMate(int player){
+		MoveList moves;
+		generateLegalMoves(moves);
+		return (!inCheck(player) && moves.count == 0);
+	}
+
+bool Board::gameIsOver(){
+		return inCheckMate(getTurn()) || inStaleMate(getTurn()) || fiftyMoveCounter >= 50;
+	}
+
+
+// Helper Functions
+int Board::getTurn(){
 		return playerTurn;
 	}
 
-	void setTurn(int turn){
+void Board::setTurn(int turn){
 		playerTurn = turn;
 	}
 
-	std::string getMoveHistory(){
+Piece* Board::makePiece(char c, int row, int col) {
+	    char lower = std::tolower(c);
+	    int color = isupper(c) ? 1 : 0;
+
+	    switch (lower) {
+	        case 'p': return new Pawn(color, row, col);
+	        case 'n': return new Knight(color, row, col);
+	        case 'b': return new Bishop(color, row, col);
+	        case 'r': return new Rook(color, row, col);
+	        case 'q': return new Queen(color, row, col);
+	        case 'k': return new King(color, row, col);
+	        default: return nullptr;
+	    }
+	}
+
+uint64_t Board::getHash(){
+		return currentHash;
+	}
+
+std::string Board::getMoveHistory(){
 		std::stack<Move> tempStack = playedMoves;  // Copy to preserve original stack
 	    std::vector<Move> reversedOrder;
 
@@ -1160,135 +1245,9 @@ public:
 	    }
 
 	    return result;
-	}
+	}																					
 
-	uint64_t getHash(){
-		return currentHash;
-	}
-
-	void updateMoveScore(Move& move) {
-	    if (move.isCapture && !move.isEnPessant) {
-	        int attacker = board[move.startRow][move.startCol]->getValue();
-			int victim   = board[move.endRow][move.endCol]->getValue();
-			move.moveScore += 100 * victim - attacker;
-	    }
-	}
-
-
-// Copy constructor (deep copy)	
-// Assignment operator (deep copy)
-//
-    Board(const Board& other) {
-        for (int i = 0; i < 8; i++){
-            for (int j = 0; j < 8; j++){
-            	if(other.board[i][j]){
-            		board[i][j] = other.board[i][j]->clone();
-            	}
-            	else{
-            		board[i][j] = nullptr;
-            	}
-            }
-        }
-    }
-
-    																										
-    Board& operator=(const Board& other) {
-    if (this == &other)
-        return *this;
-
-    for (int i = 0; i < 8; i++){
-        for (int j = 0; j < 8; j++){
-        	if (other.board[i][j]){
-        		board[i][j] = other.board[i][j]->clone();
-        	}
-        	else{
-        		board[i][j] = nullptr;
-        	}
-        } 	
-    }
-    return *this;
-}
-
-	Board* clone(){
-		Board* other = new Board(1);
-
-		for (int i = 0; i < 8; i++){
-            for (int j = 0; j < 8; j++){
-            	if(this->board[i][j]){
-            		other->board[i][j] = this->board[i][j]->clone();
-            		if (other->board[i][j]->color == 1){
-            			other->whiteAlive.insert(other->board[i][j]);
-            		}
-            		else{
-            			other->blackAlive.insert(other->board[i][j]);
-            		}
-            		if (other->board[i][j]->type == PieceType::KING) {
-					    if (other->board[i][j]->color == 1)
-					        other->whiteKing = other->board[i][j];
-					    else
-					        other->blackKing = other->board[i][j];
-					}
-            	}
-            	else{
-            		other->board[i][j] = nullptr;
-            	}
-            }
-        }
-
-        // Copy the move stack
-	    std::stack<Move> tempStack = this->playedMoves;
-	    std::stack<Move> reverseStack;
-
-	    while (!tempStack.empty()) {
-	        reverseStack.push(tempStack.top());
-	        tempStack.pop();
-	    }
-	    while (!reverseStack.empty()) {
-	        other->playedMoves.push(reverseStack.top());
-	        reverseStack.pop();
-	    }
-
-	    other->enPassantSquare = this->enPassantSquare;
-		other->playerTurn = this->playerTurn;
-		other->fiftyMoveCounter = this->fiftyMoveCounter;
-		other->whiteKingSideCastle = this->whiteKingSideCastle;
-		other->whiteQueenSideCastle = this->whiteQueenSideCastle;
-		other->blackKingSideCastle = this->blackKingSideCastle;
-		other->blackQueenSideCastle = this->blackQueenSideCastle;
-		other->currentHash = this->currentHash;
-
-		return other;
-	}
-
-
-// Prints board with Letter Representations for each piece  
-//
-	void printBoard(){																						
-		for (int i = 7; i > -1; i--) {
-        	for (int j = 0; j < 8; j++) {
-            	if (board[i][j] == nullptr) {
-                	std::cout << "* ";  // Empty square is represented by "*"
-            	} else {
-                	std::cout << board[i][j]->getRepresentation() << " ";  // Print the value of the piece
-            	}
-        	}
-        	std::cout << std::endl;  // Move to the next line after printing a row
-    	}
-	}
-
-	void printAlivePieces() {
-	    std::cout << "White Alive Pieces:\n";
-	    for (const Piece* piece : whiteAlive) {
-	        std::cout << piece->getName() << " at (" << piece->row << ", " << piece->col << ")\n";
-	    }
-
-	    std::cout << "\nBlack Alive Pieces:\n";
-	    for (const Piece* piece : blackAlive) {
-	        std::cout << piece->getName() << " at (" << piece->row << ", " << piece->col << ")\n";
-	    }
-	}
-
-	std::string generateFen(){
+std::string Board::generateFen(){
 		std::ostringstream fen;
 
 	    // 1. Piece placement
@@ -1342,47 +1301,16 @@ public:
 	    return fen.str();
 	}
 
-
-
-// Destructor to clean up dynamically allocated pieces
-//																											
-	~Board() {
-    	for (int i = 0; i < 8; i++) {
-       		for (int j = 0; j < 8; j++) {
-            	if (board[i][j] != nullptr) {
-                	delete board[i][j];  // Free the memory for the piece
-            	}
-        	}
-    	}
+void Board::cacheLegalMoves(MoveList& legalMoves){
+		moveMap.clear();
+		for (int i = 0; i < legalMoves.count; i++){
+			moveMap[legalMoves.moves[i].getMoveRepresentation()] = legalMoves.moves[i];
+		}
 	}
 
 
-private:
-	int playerTurn;
-	std::optional<std::pair<int, int>> enPassantSquare;
-	int fiftyMoveCounter;
-
-	bool whiteKingSideCastle;
-	bool whiteQueenSideCastle;
-	bool blackKingSideCastle;
-	bool blackQueenSideCastle;
-
-	Piece* whiteKing;
-	Piece* blackKing;
-
-	std::unordered_map<std::string, Move> moveMap;
-
-	std::stack<Move> playedMoves;
-
-	std::stack<Piece*> capturedPieces;
-	std::stack<Piece*> pawnRevival;
-
-	std::stack<Piece*> promotionPiecesWhite;
-	std::stack<Piece*> promotionPiecesBlack;
-
-	uint64_t currentHash;
-
-	void computeZobristHash() {
+// Private Helper Functions for Zobrist Hashing
+void Board::computeZobristHash() {
     	uint64_t hash = 0;
     	for(int i = 0; i < 8; ++i){
     		for(int j = 0; j < 8; ++j){
@@ -1412,7 +1340,7 @@ private:
 	    currentHash = hash;
 	}
 
-	void updateZobristHash(Move& move) {
+void Board::updateZobristHash(Move& move) {
 	    Piece* movedPiece = board[move.startRow][move.startCol];
 	    int pieceIndex = movedPiece->getZobristPieceIndex();
 
@@ -1478,47 +1406,5 @@ private:
 	    currentHash ^= zobristSideToMove; // Flip side
 	}
 
-// Stores the legal moves for a player in their respective move pool and populates moveMap which holds all legal moves as a value where the string representation for the move is the key
-// This map is used to check legality when attemmpting to make a move by inputting string notation
-//	
-	void cacheLegalMoves(MoveList& legalMoves){
-		moveMap.clear();
-		for (int i = 0; i < legalMoves.count; i++){
-			moveMap[legalMoves.moves[i].getMoveRepresentation()] = legalMoves.moves[i];
-		}
-	}
-
-	Piece* makePiece(char c, int row, int col) {
-	    char lower = std::tolower(c);
-	    int color = isupper(c) ? 1 : 0;
-
-	    switch (lower) {
-	        case 'p': return new Pawn(color, row, col);
-	        case 'n': return new Knight(color, row, col);
-	        case 'b': return new Bishop(color, row, col);
-	        case 'r': return new Rook(color, row, col);
-	        case 'q': return new Queen(color, row, col);
-	        case 'k': return new King(color, row, col);
-	        default: return nullptr;
-	    }
-	}
-
-	void resetEnPessant(){
-		if (!playedMoves.empty()) {
-		    Move lastMove = playedMoves.top();
-
-		    if (lastMove.epRow == -1 || lastMove.epCol == -1) {
-		        enPassantSquare = std::nullopt;
-		    } else {
-		        enPassantSquare = std::make_pair(lastMove.epRow, lastMove.epCol);
-		    }
-		} else {
-		    enPassantSquare = std::nullopt;
-		}
-	}
-
-};
 
 
-
-#endif // 

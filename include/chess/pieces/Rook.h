@@ -1,73 +1,32 @@
 #ifndef ROOK_H
 #define ROOK_H
 
+#include "chess/pieces/Piece.h"
 
 class Rook : public Piece {
 public:
-   Rook(int c, int startCol, int startRow) : Piece(c, startCol, startRow) {
-      name = "Rook";
-      type = PieceType::ROOK;
-   }
+   Rook(int c, int startCol, int startRow);
 
-   int getValue() override { return 500; }
+   int getValue() const override;
 
-   std::string getRepresentation() override {
-      if(color){
-         return "R";
-      }
-      return "r";
-   }
+   std::string getRepresentation() const override;
 
-   bool operator==(const std::string& name) const override {
-        return name == "Rook";
-    }
+   bool operator==(const PieceType _type) const override;
 
-   Piece* clone() const override { return new Rook(*this); }
+   int getMobilityScore(bool endGame)const  override;
+  
+   Piece* clone() override;
 
-   int getMobilityScore(bool endGame) const override {
-      int lookUpRow = row;
-      if(color != 0){lookUpRow = 7 - row;} 
+   const std::vector<std::pair<int, int>>& getDirections() const override;
 
-      return endGame ? endgameMobilityTable[lookUpRow][col] : mobilityTable[lookUpRow][col];
-   }
-
-   static const std::vector<std::pair<int, int>> directions;
-   const std::vector<std::pair<int, int>>& getDirections() const override {return directions;}
-
-   int getZobristPieceIndex() const override{
-      return color ? 3 : 9;
-   }
+   int getZobristPieceIndex() const override;
 
 private:
 
    static const int endgameMobilityTable[8][8];
    static const int mobilityTable[8][8];
-
+   static const std::vector<std::pair<int, int>> directions;
 
 };
-
- const int Rook::mobilityTable[8][8] = {
-       {  0,   0,   0,   5,   5,   0,   0,   0 },
-       { -5,   0,   0,   0,   0,   0,   0,  -5 },
-       { -5,   0,   0,   0,   0,   0,   0,  -5 },
-       { -5,   0,   0,   0,   0,   0,   0,  -5 },
-       { -5,   0,   0,   0,   0,   0,   0,  -5 },
-       { -5,   0,   0,   0,   0,   0,   0,  -5 },
-       {  5,  10,  10,  10,  10,  10,  10,   5 },
-       {  0,   0,   0,   0,   0,   0,   0,   0 }
-   };
-
-   const int Rook::endgameMobilityTable[8][8] = {
-       {  0,   0,   5,  10,  10,   5,   0,   0 },
-       { -5,   0,   0,   5,   5,   0,   0,  -5 },
-       { -5,   0,   0,   0,   0,   0,   0,  -5 },
-       { -5,   0,   0,   0,   0,   0,   0,  -5 },
-       { -5,   0,   0,   0,   0,   0,   0,  -5 },
-       { -5,   0,   0,   0,   0,   0,   0,  -5 },
-       {  5,  10,  10,  10,  10,  10,  10,   5 },
-       {  0,   0,   5,  10,  10,   5,   0,   0 }
-   };
-
-   const std::vector<std::pair<int, int>> Rook::directions = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
 
 #endif
