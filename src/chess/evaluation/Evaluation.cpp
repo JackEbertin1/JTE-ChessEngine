@@ -22,7 +22,7 @@ namespace Evaluation {
     float evaluate(Board* board, bool isEndState){
         if(isEndState){
             if (board->inCheckMate(board->getTurn())){
-                float winValue = board->getTurn() == 1 ? 1000000.0f : -1000000.0f;
+                float winValue = board->getTurn() == 1 ? 100000.0f : -100000.0f;
                 return winValue;
             }
             if (board->inStaleMate(board->getTurn())){return 0;}

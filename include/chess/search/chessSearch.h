@@ -30,8 +30,6 @@ namespace chessSearch {
 	void sortMoves(MoveList& moves, Board* board);
 	void storeTTEntry(uint64_t zobristKey, float value, int depth, float alphaOrig, float beta,  Move bestMove);
 
-	float minimax(Board* board, int depth, bool maximizingPlayer);
-
 	float minimaxAB(Board* board, int depth, bool maximizingPlayer, float alpha, float beta);
 
 	std::pair<std::string, float> searchBestMoveParallel(Board* board, int depth, bool maximizingPlayer);

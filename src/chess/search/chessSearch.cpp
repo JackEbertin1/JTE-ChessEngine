@@ -30,37 +30,6 @@ namespace chessSearch {
         transpositionTable[zobristKey] = TTEntry{value, depth, bestMove, flag};
     }
 
-    float minimax(Board* board, int depth, bool maximizingPlayer){
-        if (depth == 0){return evaluate(board);} 	//Base Case, if at deepest depth, simply return evaluation of that position
-        //if (board->gameIsOver()){return evaluate(board);}
-
-        float bestScore = maximizingPlayer ? -1000000.0f : 1000000.0f;
-        MoveList moves;
-        board->generatePseudoLegalMoves(moves);
-
-        if(maximizingPlayer){
-            for(int i = 0; i < moves.count; i++){
-                board->makeMove(moves[i]);
-                if(!board->inCheck(1 - board->getTurn())){
-                    float score = minimax(board, depth - 1, !maximizingPlayer);
-                    if (score > bestScore){bestScore = score;}
-                }
-                board->undoMove();
-            }
-        }
-        else{
-            for(int i = 0; i < moves.count; i++){
-                board->makeMove(moves[i]);
-                if(!board->inCheck(1 - board->getTurn())){
-                    float score = minimax(board, depth - 1, !maximizingPlayer);
-                    if (score < bestScore){bestScore = score;}
-                }
-                board->undoMove();
-            }
-        }
-        return bestScore;
-    }
-
     float minimaxAB(Board* board, int depth, bool maximizingPlayer, float alpha, float beta){
         nodesVisited++;
         if (depth == 0){return evaluate(board);} 	//Base Case, if at deepest depth, simply return evaluation of that position
@@ -167,13 +136,9 @@ namespace chessSearch {
     }
 
     std::pair<std::string, float> searchBestMoveParallel(Board* board, int depth, bool maximizingPlayer) {
-        std::cout << "Starting SBMP with TT size " << transpositionTable.size() << std::endl;
         startingDepth = depth;
-        nodesVisited = 0;
-        repeatedPositions = 0;
         MoveList moves;
         uint64_t zobristKey = board->getHash();
-        std::cout << "Searching with hash " << zobristKey << std::endl;
 
         {
             std::lock_guard<std::mutex> lock(ttMutex);
@@ -201,23 +166,35 @@ namespace chessSearch {
                 Board* newBoard = board->clone();
                 newBoard->makeMove(move);
 
-                float score = -1000000.0f;
-                if (!newBoard->inCheck(1 - newBoard->getTurn())) {
-                    score = minimaxAB(newBoard, depth - 1, !maximizingPlayer, -1000000.0f, 1000000.0f);
+                 if (newBoard->inCheck(1 - newBoard->getTurn())) {
+                // Illegal move - return sentinel value that will be filtered out
+                    delete newBoard;
+                    return std::make_pair(move, maximizingPlayer ? -2000000.0f : 2000000.0f);
                 }
 
-                delete newBoard; // clean up cloned board
+                float score = minimaxAB(newBoard, depth - 1, !maximizingPlayer, -1000000.0f, 1000000.0f);
+
+                delete newBoard;
                 return std::make_pair(move, score);
             }));
         }
 
         Move bestMove;
         float bestScore = maximizingPlayer ? -1000000.0f : 1000000.0f;
+        bool foundLegalMove = false;
 
         for (auto& future : futures) {
             auto [move, score] = future.get();
+            if ((maximizingPlayer && score <= -2000000.0f) || (!maximizingPlayer && score >= 2000000.0f)) {
+                continue;
+            }
 
-            if ((maximizingPlayer && score > bestScore) || (!maximizingPlayer && score < bestScore)) {
+            if (!foundLegalMove) {
+                bestMove = move;
+                bestScore = score;
+                foundLegalMove = true;
+            }
+            else if ((maximizingPlayer && score > bestScore) || (!maximizingPlayer && score < bestScore)) {
                 bestScore = score;
                 bestMove = move;
             }

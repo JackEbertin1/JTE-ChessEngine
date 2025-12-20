@@ -102,26 +102,21 @@ void Move::storeTimesMoved(int moveNums){
 
 std::string Move::getMoveRepresentation(){
 		std::string rep = squareToCoord(startRow, startCol) + squareToCoord(endRow, endCol);
-		if(isCapture){rep += "x";}
 
-	    if (isPromotion) {
-	        if (promotionType == PieceType::QUEEN){
-	        	rep += "Queen";
-	        }
-	        else if (promotionType == PieceType::ROOK){
-	        	rep += "Rook";
-	        }
-	        else if (promotionType == PieceType::KNIGHT){
-	        	rep += "Knight";
-	        }
-	        else if (promotionType == PieceType::BISHOP){
-	        	rep += "Bishop";
-	        }
-	    }
-
-	    if(isCastle){rep += "castle";}
-
-	    if(isEnPessant){rep += "EP";}
+		if(isPromotion){
+			if(promotionType == PieceType::QUEEN){
+				rep += "q";
+			}
+			else if(promotionType == PieceType::BISHOP){
+				rep += "b";
+			}
+			else if(promotionType == PieceType::KNIGHT){
+				rep += "n";
+			}
+			else if(promotionType == PieceType::ROOK){
+				rep += "r";
+			}
+		}
 
 	    moveRep = rep;
 	    return rep;

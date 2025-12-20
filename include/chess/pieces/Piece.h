@@ -58,6 +58,9 @@ class Piece {
 // Returns the string representation of the Piece for printing the board in terminal                                                                   //Virtual Function for == override
         virtual std::string getRepresentation() const = 0;
 
+// Returns true if piece is white        
+        virtual bool isWhite();
+
 
 // Overrides the == operator to compare if two pieces are of the same type
         virtual bool operator==(const PieceType _type) const = 0;  

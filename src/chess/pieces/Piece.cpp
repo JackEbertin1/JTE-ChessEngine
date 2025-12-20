@@ -15,6 +15,10 @@
             return type;
         }
 
+        bool Piece::isWhite(){
+            return this->color;
+        }
+
         void Piece::updateLocation(int r, int c){
             row = r;
             col = c;

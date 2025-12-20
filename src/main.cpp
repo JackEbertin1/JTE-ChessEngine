@@ -9,19 +9,6 @@ using namespace chessSearch;
 using namespace Evaluation;
 
 
-/*
-g2g4
-b7b5
-g4g5
-b5b4
-a2a4
-g5h6xEP
-
-r1bqkbnr/pppp1ppp/2n5/4p3/4P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 0 1
-
-*/
-
-
 int main() {
     
     std::string fen;
@@ -39,14 +26,14 @@ int main() {
 
     std::string move;
     MoveList moves;
-    int depth = 6;
+    int depth = 2;
 
     while (true){
         int playerTurn = test->getTurn();
 
-        if(playerTurn == 1){
+        if(playerTurn != 1){
             pair<string, float> eval = searchBestMoveParallel(test, depth, test->getTurn());
-            cout << "EvaL: " << eval.second << endl;
+            cout << "Eval: " << eval.second << endl;
             cout << "Best move is " << eval.first << endl;
         }
         
@@ -55,13 +42,6 @@ int main() {
         while(true){
             cout << "Please enter a move: " << endl;
             std::getline(std::cin, move);
-
-             if (std::cin.fail()) {
-                std::cout << "[ERROR] cin failed. Clearing state." << std::endl;
-                std::cin.clear(); // clear fail state
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // discard leftover input
-                continue;
-            }
 
             if(move == "wm"){
                 if(test->getTurn() == 0){cout << "Not White's Turn"; continue;}
@@ -95,7 +75,6 @@ int main() {
 
             if(move == "undo"){
                 test->undoMove();
-                cout << "New ZH: " << test->getHash() << endl;
                 break;
             }
 
@@ -113,8 +92,6 @@ int main() {
                     cout << "Stalemate: Match ends in a draw" << endl;
                     return 0;
                 }
-
-                cout << "New ZH: " << test->getHash() << endl;
 
                 break;
             } catch (const std::exception& e){

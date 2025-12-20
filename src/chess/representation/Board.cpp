@@ -708,7 +708,6 @@ void Board::generateMovesForPiece(Piece* piece, MoveList& Pmoves){
 		else if(piece->type == PieceType::KING){kingMoves(piece, Pmoves);}
 		else {throw std::runtime_error("Unknown piece type in generateMovesForPiece");}
 	}
- 
 
 // Pawn Algortihms
 void Board::pawnMoves(Piece* piece, MoveList& Pmoves){
@@ -1187,7 +1186,7 @@ bool Board::inCheckMate(int player){
 bool Board::inStaleMate(int player){
 		MoveList moves;
 		generateLegalMoves(moves);
-		return (!inCheck(player) && moves.count == 0);
+		return moves.count == 0 && !inCheck(player);
 	}
 
 bool Board::gameIsOver(){
