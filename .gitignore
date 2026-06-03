@@ -53,3 +53,6 @@ gmon.out
 # Temporary files
 *.tmp
 *.temp
+
+# Local planning docs (kept out of source control)
+docs/
