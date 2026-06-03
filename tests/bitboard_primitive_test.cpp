@@ -1,7 +1,7 @@
 // Trivial assertions for the bitboard primitives
 //
 // Build & run standalone:
-//   c++ -std=c++23 -I include tests/bitboard_test.cpp -o /tmp/bitboard_test && /tmp/bitboard_test
+//   c++ -std=c++23 -I include tests/bitboard_primitive_test.cpp -o /tmp/bitboard_primitive_test && /tmp/bitboard_primitive_test
 //
 // CTest wiring is intentionally deferred to step B2.
 
