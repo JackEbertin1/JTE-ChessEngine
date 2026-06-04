@@ -40,13 +40,37 @@ enum CastlingRight : std::uint8_t {
     BLACK_OOO = 8   // black queen-side (q)
 };
 
+} // namespace chess::bb
+
+// Move is needed in the make/unmake signatures below. BBMove.h re-includes
+// this header for PieceType, but that nested include is a guarded no-op and
+// the enums it needs (Color/PieceType/CastlingRight) are already defined
+// above, so this cycle resolves cleanly. Placed here (after the enums,
+// before struct Undo/BBoard).
+#include "chess/bb/BBMove.h"
+
+namespace chess::bb {
+
+// Information saved on makeMove so unmakeMove can exactly reverse it.
+// sideToMove and fullmoveNumber are NOT stored: they are restored
+// deterministically (sideToMove flips back to the mover; fullmoveNumber is
+// decremented when the unmade move was Black's). Everything else that a move
+// can mutate irreversibly is captured here.
+struct Undo {
+    PieceType     captured      = NO_PIECE_TYPE; // captured piece type, or NO_PIECE_TYPE
+    std::uint8_t  castling      = 0;             // castling rights before the move
+    int           epSquare      = NO_SQUARE;     // en-passant target before the move
+    int           halfmoveClock = 0;             // halfmove clock before the move
+    std::uint64_t hash          = 0;             // Zobrist hash before the move
+};
+
 // This struct holds all fields needed to actually track a bitboard and board state.
 struct BBoard {
     Bitboard pieceBB[NUM_COLORS][NUM_PIECE_TYPES] = {}; // 12 piece bitboards, for example white pawns are located at pieceBB[WHITE][PAWN]
     Bitboard occupancy[NUM_COLORS] = {};                // per-color occupancy
     Bitboard occupancyAll = 0;                          // both colors
 
-    Color         sideToMove    = WHITE;
+    Color         sideToMove     = WHITE;
     std::uint8_t  castling       = 0;          // OR of CastlingRight flags
     int           epSquare       = NO_SQUARE;  // en-passant TARGET square
     int           halfmoveClock  = 0;          // for the 50-move rule
@@ -80,11 +104,25 @@ struct BBoard {
     // Returns the piece type on `sq` for `color`, or NO_PIECE_TYPE if none.
     PieceType pieceTypeOn(Color color, int sq) const;
 
+    // --- make / unmake ---------------------------------------------------
+
+    // Apply `m` to the board, saving reversal info into `u`. Maintains the
+    // Zobrist `hash` incrementally (matching computeHash() bit-for-bit).
+    void makeMove(Move m, Undo& u);
+
+    // Reverse a previously-applied `m`, restoring the state saved in `u`.
+    void unmakeMove(Move m, const Undo& u);
+
     // --- debug -----------------------------------------------------------
 
     // Pretty-print the board (rank 8 on top, a-file on left) plus the
     // side-to-move / castling / ep / clocks summary.
     void printBoard(std::ostream& os) const;
+
+    // Member-wise equality over every field (all 12 bitboards, occupancies,
+    // side, castling, ep, both clocks, and hash). Used by the make/unmake
+    // round-trip test (and later the transposition table).
+    friend bool operator==(const BBoard&, const BBoard&) = default;
 };
 
 } // namespace chess::bb
