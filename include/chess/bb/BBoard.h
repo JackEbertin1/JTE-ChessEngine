@@ -70,6 +70,8 @@ struct BBoard {
     Bitboard occupancy[NUM_COLORS] = {};                // per-color occupancy
     Bitboard occupancyAll = 0;                          // both colors
 
+    PieceType mailbox[NUM_COLORS][NUM_SQUARES] = {};  // zero-init; properly set by clear()/setFromFEN
+
     Color         sideToMove     = WHITE;
     std::uint8_t  castling       = 0;          // OR of CastlingRight flags
     int           epSquare       = NO_SQUARE;  // en-passant TARGET square
@@ -95,6 +97,7 @@ struct BBoard {
 
     // Rebuild occupancy[] and occupancyAll from pieceBB[][].
     void rebuildOccupancies();
+    void rebuildMailbox();
 
     // Recompute the full Zobrist hash from scratch (no incremental update;
     // that is step A6). Also assigns it to `hash` and returns it.
