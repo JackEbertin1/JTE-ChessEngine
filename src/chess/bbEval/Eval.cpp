@@ -7,16 +7,6 @@ namespace chess::bbEval {
 
 namespace {
 
-// Material values in centipawns.
-constexpr int MATERIAL[chess::bb::NUM_PIECE_TYPES] = {
-    100,    // PAWN
-    320,    // KNIGHT
-    330,    // BISHOP
-    500,    // ROOK
-    900,    // QUEEN
-    20000   // KING
-};
-
 // Piece-square tables from White's perspective, LERF (a1=0).
 // Indexed [0..63]: index 0 = a1, index 7 = h1, index 56 = a8, index 63 = h8.
 
@@ -107,7 +97,7 @@ int evaluate(const chess::bb::BBoard& board) {
 
     for (int pt_int = 0; pt_int < chess::bb::NUM_PIECE_TYPES; ++pt_int) {
         const auto pt = static_cast<chess::bb::PieceType>(pt_int);
-        const int mat = MATERIAL[pt_int];
+        const int mat = PIECE_VALUES[pt_int];
 
         // White pieces
         chess::bb::Bitboard wb = board.pieceBB[chess::bb::WHITE][pt];

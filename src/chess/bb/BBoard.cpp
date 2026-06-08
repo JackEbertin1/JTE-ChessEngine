@@ -39,6 +39,9 @@ void BBoard::clear() {
             pieceBB[c][t] = EMPTY; //Clears all bitboards to be empty
     occupancy[WHITE] = occupancy[BLACK] = EMPTY;
     occupancyAll     = EMPTY;
+    for (int c = 0; c < NUM_COLORS; ++c)
+        for (int s = 0; s < NUM_SQUARES; ++s)
+            mailbox[c][s] = NO_PIECE_TYPE;
     sideToMove       = WHITE;
     castling         = 0;
     epSquare         = NO_SQUARE;
@@ -56,11 +59,22 @@ void BBoard::rebuildOccupancies() {
     occupancyAll = occupancy[WHITE] | occupancy[BLACK];
 }
 
+void BBoard::rebuildMailbox() {
+    for (int c = 0; c < NUM_COLORS; ++c)
+        for (int s = 0; s < NUM_SQUARES; ++s)
+            mailbox[c][s] = NO_PIECE_TYPE;
+    for (int c = 0; c < NUM_COLORS; ++c)
+        for (int t = 0; t < NUM_PIECE_TYPES; ++t) {
+            Bitboard bb = pieceBB[c][t];
+            while (bb) {
+                const int sq = pop_lsb(bb);
+                mailbox[c][sq] = static_cast<PieceType>(t);
+            }
+        }
+}
+
 PieceType BBoard::pieceTypeOn(Color color, int sq) const {
-    for (int t = 0; t < NUM_PIECE_TYPES; ++t)
-        if (test_bit(pieceBB[color][t], sq))
-            return static_cast<PieceType>(t);
-    return NO_PIECE_TYPE;
+    return mailbox[color][sq];
 }
 
 bool BBoard::setFromFEN(const std::string& fen) {
@@ -137,6 +151,7 @@ bool BBoard::setFromFEN(const std::string& fen) {
     fullmoveNumber = fullmove;
 
     rebuildOccupancies();
+    rebuildMailbox();
     computeHash();
     return true;
 }
@@ -271,23 +286,28 @@ void BBoard::makeMove(Move m, Undo& u) {
         clear_bit_ip(pieceBB[them][PAWN], capSq);
         hash ^= z.pieceTable[them][PAWN][capSq];
         u.captured = PAWN;
+        mailbox[them][capSq] = NO_PIECE_TYPE;
     } else if (is_capture(m)) {
         const PieceType captured = pieceTypeOn(them, to);
         clear_bit_ip(pieceBB[them][captured], to);
         hash ^= z.pieceTable[them][captured][to];
         u.captured = captured;
+        mailbox[them][to] = NO_PIECE_TYPE;
     }
 
     // 4. Move the moving piece off `from`.
     clear_bit_ip(pieceBB[us][moving], from);
     hash ^= z.pieceTable[us][moving][from];
+    mailbox[us][from] = NO_PIECE_TYPE;
     if (is_promotion(m)) {
         const PieceType promo = promotion_type(m);
         set_bit_ip(pieceBB[us][promo], to);
         hash ^= z.pieceTable[us][promo][to];
+        mailbox[us][to] = promo;
     } else {
         set_bit_ip(pieceBB[us][moving], to);
         hash ^= z.pieceTable[us][moving][to];
+        mailbox[us][to] = moving;
     }
 
     // 5. Castling: relocate the rook (king move is handled in step 4).
@@ -304,6 +324,8 @@ void BBoard::makeMove(Move m, Undo& u) {
         set_bit_ip(pieceBB[us][ROOK], rookTo);
         hash ^= z.pieceTable[us][ROOK][rookFrom];
         hash ^= z.pieceTable[us][ROOK][rookTo];
+        mailbox[us][rookFrom] = NO_PIECE_TYPE;
+        mailbox[us][rookTo]   = ROOK;
     }
 
     // 6. Update castling rights.
@@ -336,9 +358,36 @@ void BBoard::makeMove(Move m, Undo& u) {
     sideToMove = them;
     hash ^= z.sideToMove;
 
-    // 10. Occupancies (full rebuild is acceptable for this step; incremental
-    //     occupancy is a later optimization).
-    rebuildOccupancies();
+    // 10. Incremental occupancy update
+    clear_bit_ip(occupancy[us], from);
+    clear_bit_ip(occupancyAll, from);
+    set_bit_ip(occupancy[us], to);
+
+    if (is_en_passant(m)) {
+        // EP target square was empty; it is now occupied by our pawn.
+        set_bit_ip(occupancyAll, to);
+        // Captured pawn's square is vacated.
+        const int capSq = (us == WHITE) ? (to - 8) : (to + 8);
+        clear_bit_ip(occupancy[them], capSq);
+        clear_bit_ip(occupancyAll, capSq);
+    } else if (is_capture(m)) {
+        // `to` was already set in occupancyAll (by the captured piece); it stays set.
+        clear_bit_ip(occupancy[them], to);
+    } else {
+        // Quiet move or promotion: `to` was empty.
+        set_bit_ip(occupancyAll, to);
+    }
+
+    if (is_castle(m)) {
+        const int rookFrom = is_king_castle(m) ? (us == WHITE ? H1 : H8)
+                                               : (us == WHITE ? A1 : A8);
+        const int rookTo   = is_king_castle(m) ? (us == WHITE ? F1 : F8)
+                                               : (us == WHITE ? D1 : D8);
+        clear_bit_ip(occupancy[us], rookFrom);
+        clear_bit_ip(occupancyAll, rookFrom);
+        set_bit_ip(occupancy[us], rookTo);
+        set_bit_ip(occupancyAll, rookTo);
+    }
 }
 
 void BBoard::unmakeMove(Move m, const Undo& u) {
@@ -357,10 +406,14 @@ void BBoard::unmakeMove(Move m, const Undo& u) {
         const PieceType promo = promotion_type(m);
         clear_bit_ip(pieceBB[us][promo], to);
         set_bit_ip(pieceBB[us][PAWN], from);
+        mailbox[us][to]   = NO_PIECE_TYPE;
+        mailbox[us][from] = PAWN;
     } else {
         const PieceType moving = pieceTypeOn(us, to);
         clear_bit_ip(pieceBB[us][moving], to);
         set_bit_ip(pieceBB[us][moving], from);
+        mailbox[us][to]   = NO_PIECE_TYPE;
+        mailbox[us][from] = moving;
     }
 
     // Undo the castling rook move.
@@ -375,6 +428,8 @@ void BBoard::unmakeMove(Move m, const Undo& u) {
         }
         clear_bit_ip(pieceBB[us][ROOK], rookTo);
         set_bit_ip(pieceBB[us][ROOK], rookFrom);
+        mailbox[us][rookTo]   = NO_PIECE_TYPE;
+        mailbox[us][rookFrom] = ROOK;
     }
 
     // Restore any captured piece on its correct square.
@@ -382,8 +437,10 @@ void BBoard::unmakeMove(Move m, const Undo& u) {
         if (is_en_passant(m)) {
             const int capSq = (us == WHITE) ? (to - 8) : (to + 8);
             set_bit_ip(pieceBB[them][PAWN], capSq);
+            mailbox[them][capSq] = PAWN;
         } else {
             set_bit_ip(pieceBB[them][u.captured], to);
+            mailbox[them][to] = u.captured;
         }
     }
 
@@ -393,7 +450,39 @@ void BBoard::unmakeMove(Move m, const Undo& u) {
     halfmoveClock = u.halfmoveClock;
     hash          = u.hash;
 
-    rebuildOccupancies();
+    // Incremental occupancy update
+    set_bit_ip(occupancy[us], from);
+    set_bit_ip(occupancyAll, from);
+    clear_bit_ip(occupancy[us], to);
+
+    if (u.captured != NO_PIECE_TYPE) {
+        if (is_en_passant(m)) {
+            // EP square returns to empty.
+            clear_bit_ip(occupancyAll, to);
+            // Captured pawn's square is repopulated.
+            const int capSq = (us == WHITE) ? (to - 8) : (to + 8);
+            set_bit_ip(occupancy[them], capSq);
+            set_bit_ip(occupancyAll, capSq);
+        } else {
+            // Regular capture: captured piece is restored to `to`.
+            // occupancyAll at `to` remains set (was set; now reflects restored piece).
+            set_bit_ip(occupancy[them], to);
+        }
+    } else {
+        // No capture: `to` is now empty.
+        clear_bit_ip(occupancyAll, to);
+    }
+
+    if (is_castle(m)) {
+        const int rookFrom = is_king_castle(m) ? (us == WHITE ? H1 : H8)
+                                               : (us == WHITE ? A1 : A8);
+        const int rookTo   = is_king_castle(m) ? (us == WHITE ? F1 : F8)
+                                               : (us == WHITE ? D1 : D8);
+        clear_bit_ip(occupancy[us], rookTo);
+        clear_bit_ip(occupancyAll, rookTo);
+        set_bit_ip(occupancy[us], rookFrom);
+        set_bit_ip(occupancyAll, rookFrom);
+    }
 }
 
 void BBoard::printBoard(std::ostream& os) const {
