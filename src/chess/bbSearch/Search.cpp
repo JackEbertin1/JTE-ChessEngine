@@ -18,11 +18,13 @@ namespace {
 // qdepth counts down from a small budget; when it hits 0 we stop recursing.
 // This bounds qsearch to at most QSEARCH_DEPTH extra plies beyond the main search,
 // preventing explosion in long capture/check chains.
-constexpr int QSEARCH_DEPTH = 4;
+constexpr int QSEARCH_DEPTH   = 4;
+constexpr int LMR_FULL_DEPTH  = 4;  // moves before this index are always searched at full depth
 
 int qsearch(chess::bb::BBoard& board, SearchState& state, int alpha, int beta, int ply, int qdepth)
 {
     ++state.nodes;
+    if (state.stop) return 0;
 
     bool inCheck = isInCheck(board, board.sideToMove);
 
@@ -76,7 +78,7 @@ int qsearch(chess::bb::BBoard& board, SearchState& state, int alpha, int beta, i
     return alpha;
 }
 
-int negamax(chess::bb::BBoard& board, SearchState& state, int alpha, int beta, int depth, int ply)
+int negamax(chess::bb::BBoard& board, SearchState& state, int alpha, int beta, int depth, int ply, bool isNullNode)
 {
     state.pvLength[ply] = 0;
 
@@ -105,12 +107,45 @@ int negamax(chess::bb::BBoard& board, SearchState& state, int alpha, int beta, i
 
      ++state.nodes;
 
+    // Periodic hard-deadline check (every 2048 nodes avoids excessive clock calls).
+    if ((state.nodes & 2047) == 0) {
+        if (std::chrono::steady_clock::now() >= state.hardDeadline)
+            state.stop = true;
+    }
+    if (state.stop) return 0;
+
+    const bool inCheck = isInCheck(board, board.sideToMove);
+
+    // Null Move Pruning: skip our turn and see if the opponent still fails to
+    // beat beta. If so, the position is good enough that we can prune.
+    // Guards: not in check (illegal to pass), no consecutive null moves,
+    // minimum depth, non-trivial material (avoids zugzwang in K+P endings),
+    // and beta not near a mate score (avoids corrupting mate-distance values).
+    if (!isNullNode && !inCheck && depth >= 3
+            && std::abs(beta) < MATE_SCORE - MAX_PLY) {
+        const bool hasNonPawnMaterial =
+            (board.pieceBB[board.sideToMove][chess::bb::KNIGHT] |
+             board.pieceBB[board.sideToMove][chess::bb::BISHOP] |
+             board.pieceBB[board.sideToMove][chess::bb::ROOK]   |
+             board.pieceBB[board.sideToMove][chess::bb::QUEEN]) != 0;
+        if (hasNonPawnMaterial) {
+            const int R          = 3 + depth / 6;
+            const int nullDepth  = std::max(0, depth - 1 - R);
+            chess::bb::Undo nullUndo;
+            board.makeNullMove(nullUndo);
+            const int nullScore = -negamax(board, state, -beta, -beta + 1,
+                                           nullDepth, ply + 1, true);
+            board.unmakeNullMove(nullUndo);
+            if (nullScore >= beta) return beta;
+        }
+    }
+
     chess::bb::MoveList ml;
     generateLegalMoves(board, ml);
 
     // If there are no legal moves, it is either checkmate or stalemate.
     if (ml.count == 0) {
-        if (isInCheck(board, board.sideToMove)) {
+        if (inCheck) {
             return -(MATE_SCORE - ply);  // checkmate — sooner mate is worse for the losing side
         }
         return 0;  // stalemate
@@ -131,10 +166,33 @@ int negamax(chess::bb::BBoard& board, SearchState& state, int alpha, int beta, i
         chess::bb::Move move = ml.moves[i];
         bool isCapture = (chess::bb::flag_of(move) & chess::bb::FLAG_BIT_CAPTURE) != 0;
 
+        // Killers are quiet moves expected to be strong; don't reduce them.
+        const bool isKiller = !isCapture &&
+            (move == state.killers[ply][0] || move == state.killers[ply][1]);
+
         chess::bb::Undo u;
         board.makeMove(move, u);
-        int score = -negamax(board, state, -beta, -alpha, depth - 1, ply + 1);
+        int score;
+        if (i == 0) {
+            // PVS: first move always gets a full window.
+            score = -negamax(board, state, -beta, -alpha, depth - 1, ply + 1, false);
+        } else if (i >= LMR_FULL_DEPTH && depth >= 3 && !isCapture && !inCheck && !isKiller) {
+            // Late Move Reductions: later quiet moves are searched at reduced depth
+            // with a null window. R scales with move index and depth.
+            int R = std::max(1, 1 + (i >= 6 ? 1 : 0) + (depth >= 6 ? 1 : 0));
+            R = std::min(R, depth - 2);  // never reduce into qsearch territory
+            score = -negamax(board, state, -alpha - 1, -alpha, depth - 1 - R, ply + 1, false);
+            // If the reduced search raised alpha, verify at full depth.
+            if (!state.stop && score > alpha)
+                score = -negamax(board, state, -beta, -alpha, depth - 1, ply + 1, false);
+        } else {
+            // PVS: non-first moves get a null-window probe at full depth.
+            score = -negamax(board, state, -alpha - 1, -alpha, depth - 1, ply + 1, false);
+            if (!state.stop && score > alpha && score < beta)
+                score = -negamax(board, state, -beta, -alpha, depth - 1, ply + 1, false);
+        }
         board.unmakeMove(move, u);
+        if (state.stop) return 0;
 
         if (score >= beta) {
             if (!isCapture) {
@@ -183,13 +241,13 @@ int negamax(chess::bb::BBoard& board, SearchState& state, int alpha, int beta, i
 int search(chess::bb::BBoard& board, int depth, TT* tt) {
     SearchState state;
     state.tt = tt;
-    return negamax(board, state, -INF, INF, depth, 0);
+    return negamax(board, state, -INF, INF, depth, 0, false);
 }
 
 int searchEx(chess::bb::BBoard& board, int depth, TT* tt, SearchState& stateOut) {
     stateOut = SearchState{};
     stateOut.tt = tt;
-    return negamax(board, stateOut, -INF, INF, depth, 0);
+    return negamax(board, stateOut, -INF, INF, depth, 0, false);
 }
 
 SearchResult searchID(chess::bb::BBoard& board, TT& tt, const SearchLimits& limits)
@@ -199,13 +257,70 @@ SearchResult searchID(chess::bb::BBoard& board, TT& tt, const SearchLimits& limi
     SearchState state;
     state.tt = &tt;
 
+    // --- Time management: derive soft and hard deadlines from limits. ---
+    {
+        using Clock = std::chrono::steady_clock;
+        const auto now = Clock::now();
+
+        if (limits.movetime > 0) {
+            // Fixed time per move: hard and soft are the same deadline.
+            const auto dl = now + std::chrono::milliseconds(limits.movetime);
+            state.softDeadline = dl;
+            state.hardDeadline = dl;
+        } else {
+            const int myTime = (board.sideToMove == chess::bb::WHITE)
+                               ? limits.wtime : limits.btime;
+            const int myInc  = (board.sideToMove == chess::bb::WHITE)
+                               ? limits.winc  : limits.binc;
+            if (myTime > 0 || myInc > 0) {
+                // Allocate a fraction of the remaining clock.
+                int softMs = (limits.movestogo > 0)
+                             ? myTime / (limits.movestogo + 2)
+                             : myTime / 20 + myInc * 3 / 4;
+                // Never spend more than half the remaining time on one move.
+                softMs = std::max(1, std::min(softMs, myTime / 2));
+                // Hard limit: 3x soft, capped at 75% of remaining time.
+                const int hardMs = std::max(softMs,
+                                            std::min(softMs * 3, myTime * 3 / 4));
+                state.softDeadline = now + std::chrono::milliseconds(softMs);
+                state.hardDeadline = now + std::chrono::milliseconds(hardMs);
+            }
+            // limits.depth only, or limits.infinite: deadlines stay at max.
+        }
+    }
+
     SearchResult result;
     int maxDepth = (limits.depth > 0 && limits.depth <= MAX_PLY) ? limits.depth : MAX_PLY;
 
     for (int depth = 1; depth <= maxDepth; ++depth) {
-        int score = negamax(board, state, -INF, INF, depth, 0);
+        int score;
 
-        if (state.stop) break;   // C8 will set this; ignored for now
+        if (depth < 4 || isMateScore(result.score)) {
+            // Full window for early depths or when the previous score is a mate.
+            score = negamax(board, state, -INF, INF, depth, 0, false);
+            if (state.stop) break;
+        } else {
+            // Aspiration window: center on the previous iteration's score.
+            int delta      = 150;
+            int aspirAlpha = result.score - delta;
+            int aspirBeta  = result.score + delta;
+
+            while (true) {
+                score = negamax(board, state, aspirAlpha, aspirBeta, depth, 0, false);
+                if (state.stop) break;
+
+                if (score <= aspirAlpha) {
+                    aspirAlpha = std::max(aspirAlpha - delta, -INF);
+                    delta *= 2;
+                } else if (score >= aspirBeta) {
+                    aspirBeta = std::min(aspirBeta + delta, INF);
+                    delta *= 2;
+                } else {
+                    break;  // score is within the window
+                }
+            }
+            if (state.stop) break;
+        }
 
         // Commit this depth's result
         result.score = score;
@@ -231,6 +346,9 @@ SearchResult searchID(chess::bb::BBoard& board, TT& tt, const SearchLimits& limi
         // Decay after committing so each new iteration starts with history
         // from the completed depth, halved to prevent stale dominance.
         decayHistory(state);
+
+        // Soft deadline: don't start a new depth that is unlikely to finish in time.
+        if (std::chrono::steady_clock::now() >= state.softDeadline) break;
     }
 
     return result;

@@ -2,6 +2,7 @@
 #define CHESS_BBSEARCH_SEARCHDEFS_H
 
 #include "chess/bb/BBoard.h"   // chess::bb::Move (via BBMove.h), Color
+#include <chrono>
 #include <cstdint>
 
 namespace chess::bbSearch {
@@ -15,6 +16,8 @@ constexpr int INF        = 1'000'000;
 // but the forward decl keeps the dependency graph clean).
 class TT;
 
+using TimePoint = std::chrono::steady_clock::time_point;
+
 // All per-search mutable data: node counters, killers, history, PV table, and
 // a non-owning TT pointer.
 //
@@ -24,9 +27,15 @@ class TT;
 // write lands at pvLength[MAX_PLY], which is one past the end of a [MAX_PLY]
 // array — undefined behaviour.  The +1 eliminates this off-by-one.
 struct SearchState {
-    uint64_t nodes = 0;
-    bool stop  = false;
-    TT*  tt    = nullptr;   // non-owning; null = no TT
+    uint64_t  nodes = 0;
+    bool      stop  = false;
+    TT*       tt    = nullptr;   // non-owning; null = no TT
+
+    // Hard deadline: the search interrupts mid-depth when this is reached.
+    // Soft deadline: searchID stops starting new depths when this is reached.
+    // Both default to max so they never fire unless explicitly set.
+    TimePoint hardDeadline = TimePoint::max();
+    TimePoint softDeadline = TimePoint::max();
 
     chess::bb::Move killers[MAX_PLY + 1][2]           = {};
     int             history[2][64][64]                 = {};

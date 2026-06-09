@@ -116,6 +116,13 @@ struct BBoard {
     // Reverse a previously-applied `m`, restoring the state saved in `u`.
     void unmakeMove(Move m, const Undo& u);
 
+    // Apply a null move (pass the turn): flip sideToMove, clear epSquare,
+    // and update the Zobrist hash. No pieces move. Saves reversal info into u.
+    void makeNullMove(Undo& u);
+
+    // Reverse a null move made by makeNullMove, restoring the state saved in u.
+    void unmakeNullMove(const Undo& u);
+
     // --- debug -----------------------------------------------------------
 
     // Pretty-print the board (rank 8 on top, a-file on left) plus the

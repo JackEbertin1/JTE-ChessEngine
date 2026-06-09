@@ -485,6 +485,37 @@ void BBoard::unmakeMove(Move m, const Undo& u) {
     }
 }
 
+void BBoard::makeNullMove(Undo& u) {
+    const ZobristKeys& z = zobrist();
+
+    u.captured      = NO_PIECE_TYPE;
+    u.castling      = castling;
+    u.epSquare      = epSquare;
+    u.halfmoveClock = halfmoveClock;
+    u.hash          = hash;
+
+    // Remove the en-passant key if one was active.
+    if (epSquare != NO_SQUARE) {
+        hash ^= z.enPassant[file_of(epSquare)];
+        epSquare = NO_SQUARE;
+    }
+
+    // Flip side to move and update the hash.
+    sideToMove = static_cast<Color>(sideToMove ^ 1);
+    hash ^= z.sideToMove;
+
+    ++halfmoveClock;
+}
+
+void BBoard::unmakeNullMove(const Undo& u) {
+    // Flip the side back; restore the fields that makeNullMove changed.
+    sideToMove    = static_cast<Color>(sideToMove ^ 1);
+    epSquare      = u.epSquare;
+    halfmoveClock = u.halfmoveClock;
+    hash          = u.hash;
+    // pieceBB, occupancy, mailbox, castling are untouched by makeNullMove.
+}
+
 void BBoard::printBoard(std::ostream& os) const {
     for (int rank = 7; rank >= 0; --rank) {
         os << (rank + 1) << " |";
